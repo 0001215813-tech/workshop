@@ -1,0 +1,69 @@
+/* Campos adicionais da O.S. — mantém a base e o Firebase existentes. */
+(function(){
+'use strict';
+function safeOS(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function newOSCompleta(){
+  if(typeof openForm!=='function'){alert('Aguarde o formulário carregar.');return;}
+  const st=window.cmmsState||{};
+  const eqs=st.equipments||{};
+  const parts=st.parts||{};
+  const eqEntries=Object.entries(eqs);
+  const partEntries=Object.entries(parts);
+  const eqOptions=eqEntries.length?eqEntries.map(([id,e])=>`<option value="${safeOS(e.name||id)}">${safeOS(e.name||id)}${e.code?' — '+safeOS(e.code):''}</option>`).join(''):'<option value="">Nenhum equipamento cadastrado</option>';
+  const partOptions='<option value="">Nenhuma Peça (R$ 0,00)</option>'+partEntries.map(([id,p])=>{const name=p.name||p.item||id;const price=Number(p.cost??p.price??p.unitCost??0);return `<option value="${safeOS(name)}" data-cost="${price}">${safeOS(name)} (R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2})})</option>`}).join('');
+  const html=`
+  <label class="block"><span class="text-xs font-bold text-slate-400">Selecione o Equipamento:</span><select id="fEq" required class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700 outline-none focus:border-blue-500"><option value="">Selecione...</option>${eqOptions}</select></label>
+  <div class="grid sm:grid-cols-2 gap-3">
+    <label><span class="text-xs font-bold text-slate-400">Tipo de Intervenção:</span><select id="fType" class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700"><option value="Preventiva">Preventiva (Revisão Programada)</option><option value="Corretiva">Corretiva (Falha)</option><option value="Preditiva">Preditiva (Inspeção)</option></select></label>
+    <label><span class="text-xs font-bold text-slate-400">Técnico Responsável:</span><select id="fTech" class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700"><option>Carlos Silva (Turno A)</option><option>Ana Souza (Turno B)</option><option>João Santos (Turno C)</option><option>Equipe de Manutenção</option></select></label>
+  </div>
+  <label class="block"><span class="text-xs font-bold text-slate-400">Categoria da Falha:</span><select id="fCategory" class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700"><option>N/A - Preventiva</option><option>Falha Mecânica</option><option>Falha Elétrica</option><option>Falha Hidráulica</option><option>Vazamento</option><option>Desgaste de Componente</option><option>Lubrificação</option><option>Outro</option></select></label>
+  <label class="block"><span class="text-xs font-bold text-slate-400">Peça do Estoque Necessária:</span><select id="fPart" class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700">${partOptions}</select></label>
+  <div class="grid sm:grid-cols-2 gap-3">
+    <label><span class="text-xs font-bold text-slate-400">Tempo Parada (Minutos):</span><input id="fDowntime" type="number" min="0" step="1" placeholder="Ex: 30" class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700"></label>
+    <label><span class="text-xs font-bold text-slate-400">Custo Mão de Obra (R$):</span><input id="fLabor" type="number" min="0" step="0.01" placeholder="Ex: 150" value="0" class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700"></label>
+  </div>
+  <label class="block"><span class="text-xs font-bold text-slate-400">Status Inicial da O.S.:</span><select id="fStatus" class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700"><option>Concluída</option><option>Pendente</option><option>Em andamento</option></select></label>
+  <label class="block"><span class="text-xs font-bold text-slate-400">Descrição / Diagnóstico Técnico:</span><textarea id="fDesc" required rows="3" class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700" placeholder="Insira a causa raiz ou ação preventiva efetuada"></textarea></label>`;
+  openForm('Emissão e Gestão de Ordem de Serviço',html,async()=>{
+    const root=window.cmmsRoot||null;
+    if(!root){alert('Firebase ainda não está disponível.');return;}
+    const eq=fEq.value.trim();
+    if(!eq){alert('Selecione o equipamento.');return;}
+    const selectedPart=fPart.options[fPart.selectedIndex];
+    const partCost=Number(selectedPart?.dataset?.cost||0);
+    const labor=Number(fLabor.value||0);
+    const total=partCost+labor;
+    const r=root.child('orders').push();
+    const data={
+      equipment:eq,
+      description:fDesc.value.trim(),
+      type:fType.value,
+      interventionType:fType.value,
+      technician:fTech.value,
+      failureCategory:fCategory.value,
+      requiredPart:fPart.value||'',
+      partCost:partCost,
+      downtimeMinutes:Number(fDowntime.value||0),
+      laborCost:labor,
+      priority:fType.value==='Corretiva'?'Alta':'Média',
+      status:fStatus.value,
+      cost:total,
+      createdAt:firebase.database.ServerValue.TIMESTAMP,
+      createdByDevice:typeof deviceId!=='undefined'?deviceId:'DEV-NAVEGADOR'
+    };
+    await r.set(data);
+    closeModal();
+    if(typeof tab==='function')tab('ordens');
+  });
+  const part=document.getElementById('fPart');
+  const labor=document.getElementById('fLabor');
+  if(part&&labor)part.addEventListener('change',()=>{const o=part.options[part.selectedIndex];const pc=Number(o?.dataset?.cost||0);if(!Number(labor.value))labor.value=0;part.title=`Custo da peça: R$ ${pc.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;});
+}
+function install(){
+  window.newOS=newOSCompleta;
+  document.querySelectorAll('[onclick="newOS()"], [onclick="newOS() "]').forEach(b=>b.onclick=newOSCompleta);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(install,50));else setTimeout(install,50);
+setTimeout(install,1000);
+})();
