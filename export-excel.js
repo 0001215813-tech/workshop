@@ -1,113 +1,17 @@
 (function(){
-  'use strict';
-  function loadXLSX(){
-    return new Promise(function(resolve,reject){
-      if(window.XLSX) return resolve(window.XLSX);
-      var s=document.createElement('script');
-      s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-      s.onload=function(){ resolve(window.XLSX); };
-      s.onerror=function(){ reject(new Error('Não foi possível carregar o módulo Excel.')); };
-      document.head.appendChild(s);
-    });
-  }
-  function value(v){ return v==null ? '' : v; }
-  function date(v){
-    if(!v) return '';
-    var d=new Date(v);
-    return isNaN(d.getTime()) ? value(v) : d.toLocaleString('pt-BR');
-  }
-  window.exportarExcelFormatado=async function(){
-    try{
-      var XLSX=await loadXLSX();
-      var state=window.cmmsState||{};
-      var orders=state.orders||{};
-      var history=state.history||{};
-      var equipments=state.equipments||{};
-      var rows=[];
-      Object.keys(orders).forEach(function(id){
-        var o=orders[id]||{};
-        rows.push({
-          'OS':id,
-          'Equipamento':value(o.equipment),
-          'Tipo':value(o.type),
-          'Técnico':value(o.technician),
-          'Categoria da Falha':value(o.failureCategory),
-          'Peça':value(o.partName),
-          'Status':value(o.status),
-          'Tempo de Parada (min)':value(o.downtimeMinutes),
-          'Custo Mão de Obra (R$)':Number(o.laborCost||0),
-          'Custo da Peça (R$)':Number(o.partCost||0),
-          'Custo Total (R$)':Number(o.cost||0),
-          'Descrição / Diagnóstico':value(o.description),
-          'Criada em':date(o.createdAt),
-          'Concluída em':date(o.completedAt),
-          'Dispositivo':value(o.createdByDevice||o.completedByDevice)
-        });
-      });
-      if(!rows.length){
-        Object.keys(history).forEach(function(id){
-          var h=history[id]||{};
-          rows.push({
-            'OS':value(h.orderId),
-            'Equipamento':value(h.equipment),
-            'Tipo':'',
-            'Técnico':'',
-            'Categoria da Falha':'',
-            'Peça':'',
-            'Status':'Concluída',
-            'Tempo de Parada (min)':'',
-            'Custo Mão de Obra (R$)':0,
-            'Custo da Peça (R$)':0,
-            'Custo Total (R$)':Number(h.cost||0),
-            'Descrição / Diagnóstico':value(h.event),
-            'Criada em':'',
-            'Concluída em':date(h.date),
-            'Dispositivo':value(h.device)
-          });
-        });
-      }
-      var ws=XLSX.utils.json_to_sheet(rows);
-      var widths=[12,28,16,22,24,25,18,20,23,22,20,45,22,22,20];
-      ws['!cols']=widths.map(function(w){return {wch:w};});
-      var range=XLSX.utils.decode_range(ws['!ref']||'A1:O1');
-      for(var c=range.s.c;c<=range.e.c;c++){
-        var cell=ws[XLSX.utils.encode_cell({r:0,c:c})];
-        if(cell) cell.s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1D4ED8'}},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'thin',color:{rgb:'0F172A'}}}};
-      }
-      for(var r=1;r<=range.e.r;r++){
-        for(var cc=0;cc<=range.e.c;cc++){
-          var x=ws[XLSX.utils.encode_cell({r:r,c:cc});
-          if(x) x.s={alignment:{vertical:'top',wrapText:cc===11}};
-        }
-      }
-      ws['!autofilter']={ref:ws['!ref']};
-      ws['!freeze']={xSplit:0,ySplit:1};
-      var wb=XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb,ws,'Ordens de Serviço');
-      var eqRows=Object.keys(equipments).map(function(id){var e=equipments[id]||{};return {
-        'Código':value(e.code||e.tag||id),
-        'Equipamento':value(e.name),
-        'Tipo / Modelo':value(e.type||e.model),
-        'Fabricante':value(e.manufacturer),
-        'Localização':value(e.location),
-        'Horímetro':value(e.horimetro),
-        'Criticidade':value(e.criticality||e.criticidade),
-        'Status':value(e.status),
-        'Limite Preventiva':value(e.preventiveLimit)
-      };});
-      if(eqRows.length){
-        var we=XLSX.utils.json_to_sheet(eqRows); we['!cols']=[{wch:20},{wch:30},{wch:25},{wch:24},{wch:24},{wch:14},{wch:18},{wch:18},{wch:20}];
-        var er=XLSX.utils.decode_range(we['!ref']);
-        for(var ec=er.s.c;ec<=er.e.c;ec++){var eh=we[XLSX.utils.encode_cell({r:0,c:ec})];if(eh)eh.s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1D4ED8'}},alignment:{horizontal:'center'}};}
-        we['!autofilter']={ref:we['!ref']};we['!freeze']={xSplit:0,ySplit:1};XLSX.utils.book_append_sheet(wb,we,'Ativos');
-      }
-      var now=new Date();
-      var stamp=now.toISOString().slice(0,10).replace(/-/g,'');
-      XLSX.writeFile(wb,'Relatorio_Manutencao_'+stamp+'.xlsx');
-    }catch(err){
-      console.error('Exportação Excel:',err);
-      alert('Não foi possível gerar a planilha. Verifique sua conexão com a internet e tente novamente.');
-    }
-  };
-  window.exportarCSV=function(){return window.exportarExcelFormatado();};
+'use strict';
+function loadXLSX(){return new Promise(function(resolve,reject){if(window.XLSX)return resolve(window.XLSX);var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.onload=function(){resolve(window.XLSX)};s.onerror=function(){reject(new Error('Não foi possível carregar o módulo Excel.'))};document.head.appendChild(s)})}
+function value(v){return v==null?'':v}
+function date(v){if(!v)return '';var d=new Date(v);return isNaN(d.getTime())?value(v):d.toLocaleString('pt-BR')}
+window.exportarExcelFormatado=async function(){try{var XLSX=await loadXLSX(),state=window.cmmsState||{},orders=state.orders||{},history=state.history||{},equipments=state.equipments||{},rows=[];
+Object.keys(orders).forEach(function(id){var o=orders[id]||{};rows.push({'OS':id,'Equipamento':value(o.equipment),'Tipo':value(o.type),'Técnico':value(o.technician),'Categoria da Falha':value(o.failureCategory),'Peça':value(o.partName),'Status':value(o.status),'Tempo de Parada (min)':value(o.downtimeMinutes),'Custo Mão de Obra (R$)':Number(o.laborCost||0),'Custo da Peça (R$)':Number(o.partCost||0),'Custo Total (R$)':Number(o.cost||0),'Descrição / Diagnóstico':value(o.description),'Criada em':date(o.createdAt),'Concluída em':date(o.completedAt),'Dispositivo':value(o.createdByDevice||o.completedByDevice)})});
+if(!rows.length)Object.keys(history).forEach(function(id){var h=history[id]||{};rows.push({'OS':value(h.orderId),'Equipamento':value(h.equipment),'Tipo':'','Técnico':'','Categoria da Falha':'','Peça':'','Status':'Concluída','Tempo de Parada (min)':'','Custo Mão de Obra (R$)':0,'Custo da Peça (R$)':0,'Custo Total (R$)':Number(h.cost||0),'Descrição / Diagnóstico':value(h.event),'Criada em':'','Concluída em':date(h.date),'Dispositivo':value(h.device)})});
+if(!rows.length)rows.push({'OS':'','Equipamento':'','Tipo':'','Técnico':'','Categoria da Falha':'','Peça':'','Status':'','Tempo de Parada (min)':'','Custo Mão de Obra (R$)':0,'Custo da Peça (R$)':0,'Custo Total (R$)':0,'Descrição / Diagnóstico':'Nenhuma O.S. registrada','Criada em':'','Concluída em':'','Dispositivo':''});
+var ws=XLSX.utils.json_to_sheet(rows),widths=[12,28,16,22,24,25,18,20,23,22,20,45,22,22,20];ws['!cols']=widths.map(function(w){return{wch:w}});var range=XLSX.utils.decode_range(ws['!ref']);
+for(var c=range.s.c;c<=range.e.c;c++){var cell=ws[XLSX.utils.encode_cell({r:0,c:c})];if(cell)cell.s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1D4ED8'}},alignment:{horizontal:'center',vertical:'center'}}}
+ws['!autofilter']={ref:ws['!ref']};ws['!freeze']={xSplit:0,ySplit:1};var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Ordens de Serviço');
+var eqRows=Object.keys(equipments).map(function(id){var e=equipments[id]||{};return{'Código':value(e.code||e.tag||id),'Equipamento':value(e.name),'Tipo / Modelo':value(e.type||e.model),'Fabricante':value(e.manufacturer),'Localização':value(e.location),'Horímetro':value(e.horimetro),'Criticidade':value(e.criticality||e.criticidade),'Status':value(e.status),'Limite Preventiva':value(e.preventiveLimit)}});
+if(eqRows.length){var we=XLSX.utils.json_to_sheet(eqRows);we['!cols']=[{wch:20},{wch:30},{wch:25},{wch:24},{wch:24},{wch:14},{wch:18},{wch:18},{wch:20}];var er=XLSX.utils.decode_range(we['!ref']);for(var ec=er.s.c;ec<=er.e.c;ec++){var eh=we[XLSX.utils.encode_cell({r:0,c:ec})];if(eh)eh.s={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1D4ED8'}},alignment:{horizontal:'center'}}}we['!autofilter']={ref:we['!ref']};we['!freeze']={xSplit:0,ySplit:1};XLSX.utils.book_append_sheet(wb,we,'Ativos')}
+var stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');XLSX.writeFile(wb,'Relatorio_Manutencao_'+stamp+'.xlsx')}catch(err){console.error('Exportação Excel:',err);alert('Não foi possível gerar a planilha. Verifique sua conexão com a internet e tente novamente.')}};
+window.exportarCSV=function(){return window.exportarExcelFormatado()};
 })();
