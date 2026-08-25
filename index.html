@@ -2,12 +2,54 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="refresh" content="0; url=./gemini-code-1787600450210-v2.html">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Plataforma Manutenção 4.0</title>
-<script>window.location.replace('./gemini-code-1787600450210-v2.html');</script>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#020617}iframe{width:100%;height:100%;border:0}</style>
 </head>
 <body>
-<p>Carregando a Plataforma Manutenção 4.0...</p>
+<iframe id="appFrame" src="./gemini-code-1787600450210-v2.html?build=csvfix1" title="Plataforma Manutenção 4.0"></iframe>
+<script>
+(function(){
+ const frame=document.getElementById('appFrame');
+ function install(){
+  try{
+   const d=frame.contentDocument;
+   if(!d||!d.body)return;
+   if(d.getElementById('csvExportButton'))return;
+   const section=d.getElementById('historico');
+   if(!section)return;
+   const heading=section.querySelector('h2');
+   if(!heading)return;
+   const btn=d.createElement('button');
+   btn.id='csvExportButton';
+   btn.textContent='⬇ Exportar CSV';
+   btn.style.cssText='float:right;background:#16a34a;color:#fff;border:0;border-radius:7px;padding:8px 12px;font-weight:700;cursor:pointer;margin-top:-4px';
+   heading.parentNode.insertBefore(btn,heading.nextSibling);
+   btn.addEventListener('click',exportCSV);
+  }catch(e){setTimeout(install,1000)}
+ }
+ function clean(v){
+  v=String(v==null?'':v).replace(/\r?\n|\r/g,' ').trim();
+  if(/^[=+\-@]/.test(v))v="'"+v;
+  return '"'+v.replace(/"/g,'""')+'"';
+ }
+ function exportCSV(){
+  const d=frame.contentDocument;
+  const rows=[...d.querySelectorAll('#historyList tr')].filter(r=>r.cells.length>=6);
+  const headers=['Data','Equipamento','Evento','OS','Custo','Dispositivo'];
+  const lines=[headers.map(clean).join(';')];
+  rows.forEach(r=>lines.push([...r.cells].slice(0,6).map(c=>clean(c.innerText)).join(';')));
+  const csv='\uFEFF'+lines.join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=d.createElement('a');
+  a.href=url;
+  a.download='historico-manutencao-'+new Date().toISOString().slice(0,10)+'.csv';
+  d.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+ }
+ frame.addEventListener('load',()=>{setTimeout(install,500);setInterval(install,2000)});
+})();
+</script>
 </body>
 </html>
