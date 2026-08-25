@@ -15,10 +15,11 @@ body{overflow:hidden}
 <script>
 (async function(){
   try{
-    const response=await fetch('./gemini-code-1787600450210-v2.html?build=firebase-loader-2',{cache:'no-store'});
+    const response=await fetch('./gemini-code-1787600450210-v2.html?build=firebase-loader-3',{cache:'no-store'});
     if(!response.ok) throw new Error('Não foi possível carregar o aplicativo: HTTP '+response.status);
     let html=await response.text();
-    const firebaseScripts='<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"><\\/script><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"><\\/script>';
+    const endScript='</scr'+'ipt>';
+    const firebaseScripts='<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js">'+endScript+'<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js">'+endScript;
     const marker='<script>const firebaseConfig=';
     if(!html.includes(marker)) throw new Error('Código de inicialização do Firebase não encontrado no aplicativo.');
     html=html.replace(marker,firebaseScripts+marker);
