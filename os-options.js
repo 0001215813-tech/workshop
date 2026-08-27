@@ -42,12 +42,15 @@ function newOSCompleta(){
     // Regra de status do ativo:
     // 1) O.S. "Em andamento" -> ativo "Em manutenção".
     // 2) O.S. Corretiva/Preditiva + "Pendente" -> ativo "Parado".
-    // 3) Demais situações -> mantém o status atual do ativo.
+    // 3) O.S. Preventiva + "Pendente" -> manutenção preventiva agendada.
+    // 4) Demais situações -> mantém o status atual do ativo.
     let assetStatus=null;
     if(initialStatus==='Em andamento'){
       assetStatus='Em manutenção';
     }else if(initialStatus==='Pendente' && (interventionType==='Corretiva' || interventionType==='Preditiva')){
       assetStatus='Parado';
+    }else if(initialStatus==='Pendente' && interventionType==='Preventiva'){
+      assetStatus='Operando - manutenção preventiva agendada';
     }
 
     const r=root.child('orders').push();
