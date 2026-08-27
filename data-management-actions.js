@@ -1,4 +1,4 @@
-/* Gerenciamento de dados. Mantém as funções existentes e sincroniza a limpeza completa do histórico com as O.S. */
+/* Gerenciamento de dados. Mantém as funções existentes e garante limpeza real do histórico/O.S. */
 (function(){
 'use strict';
 const root=()=>window.cmmsRoot||null;
@@ -24,9 +24,36 @@ async function clearHistory(){
  if(!historyCount&&!ordersCount){alert('O histórico e as O.S. já estão vazios.');return;}
  if(!confirmDelete(`Limpar todo o histórico de O.S.?\n\nHistórico: ${historyCount} registro(s)\nO.S.: ${ordersCount} registro(s)\n\nIsso deixará o histórico, a lista de O.S. e o custo acumulado zerados.`))return;
  try{
-   await r.update({history:null,orders:null});
+   /* Remove diretamente os dois nós do Realtime Database. */
+   await Promise.all([
+     r.child('history').remove(),
+     r.child('orders').remove()
+   ]);
+
+   /* Atualiza imediatamente a memória local para não deixar a tela antiga visível. */
+   if(window.cmmsState){
+     window.cmmsState.history={};
+     window.cmmsState.orders={};
+   }
+   if(typeof window.__cmmsRender==='function') window.__cmmsRender();
+   if(typeof window.cmmsRender==='function') window.cmmsRender();
+
+   /* Limpa a tabela de O.S. imediatamente, caso o render principal ainda esteja aguardando o listener. */
+   const osList=document.getElementById('osList');
+   if(osList) osList.innerHTML='';
+   const historyList=document.getElementById('historyList');
+   if(historyList) historyList.innerHTML='';
+   const kpiDone=document.getElementById('kpiDone');
+   if(kpiDone) kpiDone.textContent='0';
+   const kpiOpen=document.getElementById('kpiOpen');
+   if(kpiOpen) kpiOpen.textContent='0';
+   const kpiCost=document.getElementById('kpiCost');
+   if(kpiCost) kpiCost.textContent='R$ 0,00';
+   const badge=document.getElementById('badge');
+   if(badge) badge.textContent='0';
+
    alert('Histórico, O.S. e custos acumulados foram limpos com sucesso.');
- }catch(e){console.error(e);alert('Não foi possível limpar os dados.');}
+ }catch(e){console.error('clearHistory',e);alert('Não foi possível limpar os dados do Firebase.');}
 }
 
 function text(el){return (el?.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();}
