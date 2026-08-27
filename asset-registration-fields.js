@@ -2,6 +2,22 @@
 (function(){
   'use strict';
 
+  function installModalScroll(){
+    if(document.getElementById('asset-modal-scroll-fix')) return;
+    const style=document.createElement('style');
+    style.id='asset-modal-scroll-fix';
+    style.textContent=`
+      #modal{overflow-y:auto;align-items:center;}
+      #modal > .card{max-height:calc(100vh - 2rem);overflow-y:auto;box-sizing:border-box;}
+      #modal #form{padding-bottom:.25rem;}
+      @media (max-height:700px){
+        #modal{align-items:flex-start;}
+        #modal > .card{margin-top:1rem;margin-bottom:1rem;max-height:calc(100vh - 2rem);}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function safe(v){
     return String(v??'').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));
   }
@@ -11,11 +27,11 @@
   }
 
   function install(){
-    // O formulário original já possui openForm; não dependemos de cmmsRoot
-    // para instalar a interface, evitando que o cadastro antigo permaneça ativo.
     if(typeof window.openForm!=='function') return false;
+    installModalScroll();
 
     window.newEquipment=function(){
+      installModalScroll();
       window.openForm('Cadastrar Ativo',
         field('Nome do equipamento','eName','text','Ex.: Escavadeira CAT 320')+
         field('Código / TAG','eCode','text','Ex.: EQ-001')+
@@ -64,8 +80,6 @@
     return true;
   }
 
-  // O HTML principal é carregado dinamicamente; tenta instalar imediatamente
-  // e continua tentando por alguns segundos até openForm existir.
   if(!install()){
     let tries=0;
     const timer=setInterval(()=>{
