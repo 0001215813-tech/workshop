@@ -1,116 +1,60 @@
-/* Remover Ativo - correção definitiva de identificação do ativo. */
+/* Remover Ativo - versão 5: botão persistente e identificação pelo Firebase. */
 (function(){
   'use strict';
-
-  function getRoot(){try{return window.cmmsRoot||null}catch(e){return null}}
-  function getState(){try{return window.cmmsState||{}}catch(e){return {}}}
-
-  function getEntries(){
-    var eq=(getState()&&getState().equipments)||{};
-    if(Array.isArray(eq)) return eq.map(function(e,i){return [String(e&&((e.id)||(e.assetId)||i)),e||{}]});
-    return Object.entries(eq);
+  var started=false;
+  function root(){ try{return window.cmmsRoot||null}catch(e){return null} }
+  function norm(v){return String(v==null?'':v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();}
+  function entriesFromSnapshot(snap){
+    var v=snap&&snap.val?snap.val():{};
+    if(Array.isArray(v)) return v.map(function(e,i){return [String(e&&e.id||e&&e.assetId||i),e||{}]});
+    return Object.entries(v||{});
   }
-
-  function clean(v){
-    return String(v==null?'':v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
-  }
-
-  function valuesOf(e,id){
-    e=e||{};
-    return [
-      id,
-      e.id,e.assetId,e.codigo,e.code,e.name,e.type,e.modelo,e.model,
-      e.location,e.localizacao,e.setor,e.area
-    ].filter(function(v){return v!==undefined&&v!==null&&String(v).trim()!==''}).map(clean);
-  }
-
-  function resolveEntry(card,index,entries){
-    var text=clean(card.innerText||'');
-    var scored=entries.map(function(pair,i){
-      var id=pair[0],e=pair[1]||{};
-      var vals=valuesOf(e,id),score=0;
-      vals.forEach(function(v){
-        if(v && text.indexOf(v)!==-1) score += (v.length>=4 ? 10 : 2);
+  function nameOf(e,id){return String((e&& (e.name||e.codigo||e.code||e.modelo||e.model)) || id || 'Ativo');}
+  function match(card,entries,index){
+    var text=norm(card.innerText||'');
+    var best=null,bscore=-1;
+    entries.forEach(function(p,i){
+      var id=String(p[0]),e=p[1]||{},score=0;
+      [id,nameOf(e,id),e.type,e.localizacao,e.location,e.setor,e.area,e.codigo,e.code].forEach(function(v){
+        var x=norm(v); if(x && text.indexOf(x)>=0) score += x.length>=4?20:3;
       });
-      if(i===index) score+=1;
-      return {pair:pair,score:score,index:i};
-    }).sort(function(a,b){return b.score-a.score||a.index-b.index});
-    if(!scored.length)return null;
-    return scored[0].score>1 ? scored[0].pair : (entries[index]||null);
+      if(i===index) score+=2;
+      if(score>bscore){bscore=score;best=p;}
+    });
+    return best || entries[index] || null;
   }
-
-  async function removeAsset(id,name){
-    var r=getRoot();
-    if(!r){alert('Firebase ainda não está disponível.');return}
-    if(!id){alert('Não foi possível identificar este ativo.');return}
+  function style(b){
+    b.style.display='block';b.style.width='100%';b.style.boxSizing='border-box';b.style.marginTop='12px';b.style.padding='10px 12px';b.style.minHeight='38px';b.style.borderRadius='10px';b.style.background='#3f1720';b.style.border='1px solid #991b1b';b.style.color='#fca5a5';b.style.fontSize='12px';b.style.fontWeight='900';b.style.lineHeight='1.2';b.style.cursor='pointer';b.style.visibility='visible';b.style.opacity='1';b.style.position='relative';b.style.zIndex='999';}
+  async function removeById(id,name){
+    var r=root();
+    if(!r||!id){alert('Não foi possível identificar este ativo.');return;}
     if(!confirm('Remover o ativo "'+name+'" do cadastro?\n\nEsta ação não pode ser desfeita.'))return;
-    try{
-      await r.child('equipments').child(String(id)).remove();
-      alert('Ativo removido com sucesso.');
-    }catch(e){
-      console.error('Erro ao remover ativo:',e);
-      alert('Não foi possível remover o ativo. Verifique a conexão com o Firebase.');
-    }
+    try{await r.child('equipments').child(String(id)).remove();alert('Ativo removido com sucesso.');}
+    catch(e){console.error(e);alert('Não foi possível remover o ativo. Verifique a conexão com o Firebase.');}
   }
-
-  function addButtons(){
+  function ensure(entries){
     var list=document.getElementById('equipmentList');
     if(!list)return;
-    var entries=getEntries();
-    if(!entries.length)return;
-
-    var cards=Array.prototype.slice.call(list.children).filter(function(x){return x&&x.nodeType===1});
-
+    var cards=Array.prototype.slice.call(list.children).filter(function(c){return c.nodeType===1;});
     cards.forEach(function(card,index){
-      var pair=resolveEntry(card,index,entries);
-      if(!pair)return;
-      var id=String(pair[0]||'');
-      var e=pair[1]||{};
-      var name=String(e.name||e.codigo||e.code||id||'Ativo');
-
-      card.setAttribute('data-resolved-asset-id',id);
-
-      var b=card.querySelector('[data-remove-asset-final]');
-      if(!b){
-        b=document.createElement('button');
-        b.type='button';
-        b.setAttribute('data-remove-asset-final','1');
-        b.innerHTML='🗑️ &nbsp;Remover Ativo';
-        card.appendChild(b);
-      }
-
-      b.setAttribute('data-asset-id',id);
-      b.setAttribute('data-asset-name',name);
-      b.style.cssText='display:block!important;width:100%!important;box-sizing:border-box!important;margin-top:12px!important;padding:10px 12px!important;border-radius:10px!important;background:#3f1720!important;border:1px solid #991b1b!important;color:#fca5a5!important;font-size:12px!important;font-weight:900!important;line-height:1.2!important;cursor:pointer!important;min-height:38px!important;visibility:visible!important;opacity:1!important;position:relative!important;z-index:50!important';
-
-      b.onclick=function(ev){
-        ev.preventDefault();
-        ev.stopPropagation();
-        var rid=String(b.getAttribute('data-asset-id')||card.getAttribute('data-resolved-asset-id')||'');
-        var rname=b.getAttribute('data-asset-name')||'Ativo';
-        if(rid) removeAsset(rid,rname);
-        else alert('Não foi possível identificar este ativo.');
-      };
+      var pair=match(card,entries,index); if(!pair)return;
+      var id=String(pair[0]||'');var e=pair[1]||{};var nm=nameOf(e,id);
+      var b=card.querySelector('button[data-remove-asset-final]');
+      if(!b){b=document.createElement('button');b.type='button';b.setAttribute('data-remove-asset-final','1');b.innerHTML='<i class="fa-solid fa-trash-can" style="margin-right:6px"></i>Remover Ativo';card.appendChild(b);}
+      b.dataset.assetId=id;b.dataset.assetName=nm;style(b);
+      if(!b.__removeBound){b.__removeBound=true;b.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();removeById(b.dataset.assetId,b.dataset.assetName);});}
     });
   }
-
-  function install(){
-    addButtons();
-    if(window.MutationObserver){
-      new MutationObserver(function(){setTimeout(addButtons,20)}).observe(document.body,{childList:true,subtree:true});
-    }
-    setInterval(addButtons,500);
-    var tries=0,t=setInterval(function(){
-      try{
-        var r=getRoot();
-        if(r){
-          r.child('equipments').on('value',function(){setTimeout(addButtons,50)});
-        }
-      }catch(e){}
-      if(++tries>120)clearInterval(t);
-    },250);
+  async function sync(){
+    var r=root(); if(!r)return;
+    try{var snap=await r.child('equipments').once('value');ensure(entriesFromSnapshot(snap));}catch(e){console.warn('Remover Ativo:',e);}
   }
-
-  window.removeAsset=removeAsset;
+  function install(){
+    if(started)return;started=true;
+    sync();
+    if(window.MutationObserver)new MutationObserver(function(){sync();}).observe(document.body,{childList:true,subtree:true});
+    setInterval(sync,800);
+  }
+  window.removeAsset=removeById;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
