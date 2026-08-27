@@ -1,4 +1,4 @@
-/* Gerenciamento de dados. Somente adiciona as ações de excluir; não altera as funções existentes. */
+/* Gerenciamento de dados. Mantém as funções existentes e sincroniza a limpeza do histórico com as O.S. concluídas. */
 (function(){
 'use strict';
 const root=()=>window.cmmsRoot||null;
@@ -12,16 +12,31 @@ async function removeAsset(id,name){
  try{await r.child('equipments/'+id).remove();alert('Ativo removido com sucesso.');}
  catch(e){console.error(e);alert('Não foi possível remover o ativo.');}
 }
+
 async function clearHistory(){
  const r=root();
  if(!r){alert('Firebase ainda não está disponível.');return;}
- const h=state().history||{};
- const n=Object.keys(h).length;
- if(!n){alert('O histórico já está vazio.');return;}
- if(!confirmDelete(`Excluir todo o histórico de manutenção (${n} registro(s))?`))return;
- try{await r.child('history').remove();alert('Histórico excluído com sucesso.');}
- catch(e){console.error(e);alert('Não foi possível excluir o histórico.');}
+ const s=state();
+ const h=s.history||{};
+ const orders=s.orders||{};
+ const historyCount=Object.keys(h).length;
+ const completedEntries=Object.entries(orders).filter(([id,o])=>{
+   const status=String(o?.status||'').trim().toLowerCase();
+   return status==='concluída'||status==='concluida';
+ });
+ const completedCount=completedEntries.length;
+ if(!historyCount&&!completedCount){alert('O histórico e as O.S. concluídas já estão vazios.');return;}
+ const message=`Limpar histórico e O.S. concluídas?\n\nHistórico: ${historyCount} registro(s)\nO.S. concluídas: ${completedCount} registro(s)\n\nAs O.S. em aberto/em andamento serão mantidas.`;
+ if(!confirmDelete(message))return;
+ try{
+   const updates={};
+   if(historyCount)updates.history=null;
+   completedEntries.forEach(([id])=>{updates['orders/'+id]=null;});
+   await r.update(updates);
+   alert('Histórico e O.S. concluídas foram limpos com sucesso.');
+ }catch(e){console.error(e);alert('Não foi possível limpar os dados.');}
 }
+
 function text(el){return (el?.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();}
 function findHeading(words){
  return [...document.querySelectorAll('h1,h2,h3,h4,.text-2xl,.text-xl')].find(e=>words.some(w=>text(e).includes(w)));
