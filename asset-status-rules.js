@@ -1,12 +1,17 @@
-/* Sincronização robusta do status do ativo com as O.S.
-   - Ao concluir uma O.S., o ativo correspondente volta para "Operando" quando não há outra O.S. aberta para ele.
-   - Corrige ativos que ficaram presos em "Em manutenção" após versões anteriores.
-   - Mantém compatibilidade com O.S. antigas sem equipmentId. */
+/* Vínculo direto entre o status da ÚLTIMA O.S. e o status do ativo.
+   Regras:
+   - Última O.S. = Concluída -> Operando
+   - Última O.S. = Em Andamento -> Em manutenção
+   - Última O.S. = Pendente + Preventiva -> Operando - manutenção preventiva agendada
+   - Última O.S. = Pendente + Corretiva/Preditiva -> Parado
+   - Compatível com O.S. antigas sem equipmentId, resolvendo pelo nome/código do ativo.
+*/
 (function(){
   'use strict';
 
   const normalize=v=>String(v??'').trim().toLowerCase().replace(/\s+/g,' ');
   const getRoot=()=>window.cmmsRoot||null;
+  const getDevice=()=>typeof window.deviceId!=='undefined'?window.deviceId:'DEV-NAVEGADOR';
 
   function resolveEquipmentId(order,equipments){
     if(!order||!equipments)return '';
@@ -20,18 +25,45 @@
     return match?match[0]:'';
   }
 
-  function orderEquipmentId(order,equipments){
-    return resolveEquipmentId(order,equipments);
+  function timestampOf(order){
+    const values=[order?.createdAt,order?.updatedAt,order?.completedAt,order?.date];
+    for(const v of values){
+      const n=Number(v);
+      if(Number.isFinite(n)&&n>0)return n;
+    }
+    return 0;
   }
 
-  function hasOpenOrderForEquipment(orders,equipments,equipmentId,ignoreOrderId){
-    return Object.entries(orders||{}).some(([id,o])=>{
-      if(id===ignoreOrderId || !o || o.status==='Concluída') return false;
-      return orderEquipmentId(o,equipments)===equipmentId;
+  function latestOrderForEquipment(orders,equipments,equipmentId){
+    const related=Object.entries(orders||{})
+      .filter(([,o])=>o && resolveEquipmentId(o,equipments)===equipmentId)
+      .map(([id,o])=>({id,order:o}));
+    if(!related.length)return null;
+    related.sort((a,b)=>{
+      const ta=timestampOf(a.order),tb=timestampOf(b.order);
+      if(tb!==ta)return tb-ta;
+      return String(b.id).localeCompare(String(a.id));
     });
+    return related[0];
   }
 
-  async function reconcileCompletedAssets(){
+  function statusFromLatestOrder(order){
+    if(!order)return null;
+    const status=normalize(order.status);
+    const type=normalize(order.type||order.interventionType||order.tipo);
+
+    if(status==='concluída' || status==='concluida')return 'Operando';
+    if(status==='em andamento' || status==='em manutenção' || status==='em manutencao')return 'Em manutenção';
+
+    if(status==='pendente' || status==='aberta' || status==='aberto'){
+      if(type==='preventiva')return 'Operando - manutenção preventiva agendada';
+      if(type==='corretiva' || type==='preditiva')return 'Parado';
+    }
+
+    return null;
+  }
+
+  async function reconcileLatestOrderStatuses(){
     const root=getRoot();
     if(!root)return;
     try{
@@ -42,90 +74,67 @@
       const updates={};
 
       Object.entries(equipments).forEach(([equipmentId,equipment])=>{
-        const related=Object.entries(orders).filter(([,o])=>orderEquipmentId(o,equipments)===equipmentId);
-        if(!related.length)return;
-        const hasOpen=related.some(([,o])=>o && o.status!=='Concluída');
-        const hasCompleted=related.some(([,o])=>o && o.status==='Concluída');
-        if(hasCompleted && !hasOpen && equipment.status!=='Operando'){
-          updates['equipments/'+equipmentId+'/status']='Operando';
+        const latest=latestOrderForEquipment(orders,equipments,equipmentId);
+        const desired=statusFromLatestOrder(latest?.order);
+        if(desired && String(equipment?.status||'')!==desired){
+          updates['equipments/'+equipmentId+'/status']=desired;
           updates['equipments/'+equipmentId+'/updatedAt']=firebase.database.ServerValue.TIMESTAMP;
-          updates['equipments/'+equipmentId+'/updatedByDevice']=typeof deviceId!=='undefined'?deviceId:'DEV-NAVEGADOR';
+          updates['equipments/'+equipmentId+'/updatedByDevice']=getDevice();
         }
       });
 
-      if(Object.keys(updates).length) await root.update(updates);
+      if(Object.keys(updates).length)await root.update(updates);
     }catch(error){
-      console.error('Sincronização de status dos ativos:',error);
+      console.error('Sincronização status ativo/O.S.:',error);
+    }
+  }
+
+  async function finishOrder(id){
+    const r=getRoot();
+    if(!r){alert('Firebase ainda não está disponível.');return;}
+    try{
+      const snap=await r.child('orders/'+id).once('value');
+      const order=snap.val();
+      if(!order)return;
+
+      const equipmentSnap=await r.child('equipments').once('value');
+      const equipments=equipmentSnap.val()||{};
+      const equipmentId=resolveEquipmentId(order,equipments);
+      if(!equipmentId){
+        alert('Não foi possível identificar o ativo desta O.S. para finalizar.');
+        return;
+      }
+
+      const updates={
+        ['orders/'+id+'/status']:'Concluída',
+        ['orders/'+id+'/completedAt']:firebase.database.ServerValue.TIMESTAMP,
+        ['orders/'+id+'/completedByDevice']:getDevice(),
+        ['orders/'+id+'/equipmentId']:equipmentId
+      };
+
+      await r.update(updates);
+      await reconcileLatestOrderStatuses();
+      alert('O.S. finalizada e o status do ativo foi sincronizado com a última O.S.');
+    }catch(error){
+      console.error('finishOS:',error);
+      alert('A O.S. não pôde ser finalizada corretamente. Verifique a conexão/permissão do Firebase.');
     }
   }
 
   function install(){
-    if(window.__assetStatusFinishFixed)return;
+    if(window.__assetStatusLatestRuleInstalled)return;
     const root=getRoot();
     if(!root)return;
 
-    window.finishOS=async function(id){
-      const r=getRoot();
-      if(!r){alert('Firebase ainda não está disponível.');return;}
-      try{
-        const [orderSnap,equipSnap,ordersSnap]=await Promise.all([
-          r.child('orders/'+id).once('value'),
-          r.child('equipments').once('value'),
-          r.child('orders').once('value')
-        ]);
-        const order=orderSnap.val();
-        const equipments=equipSnap.val()||{};
-        const orders=ordersSnap.val()||{};
-        if(!order)return;
-        if(order.status==='Concluída'){
-          await reconcileCompletedAssets();
-          return;
-        }
+    window.finishOS=finishOrder;
 
-        const equipmentId=resolveEquipmentId(order,equipments);
-        if(!equipmentId){
-          alert('Não foi possível identificar o ativo desta O.S. para finalizar.');
-          return;
-        }
+    // Mantém o vínculo em tempo real sempre que uma O.S. mudar.
+    try{
+      root.child('orders').on('value',reconcileLatestOrderStatuses);
+    }catch(e){console.warn('Listener de status dos ativos:',e)}
 
-        // Atualiza a cópia local para calcular o estado correto depois da conclusão.
-        orders[id]={...order,status:'Concluída'};
-        const stillHasOpen=hasOpenOrderForEquipment(orders,equipments,equipmentId,id);
-        const updates={
-          ['orders/'+id+'/status']:'Concluída',
-          ['orders/'+id+'/completedAt']:firebase.database.ServerValue.TIMESTAMP,
-          ['orders/'+id+'/completedByDevice']:typeof deviceId!=='undefined'?deviceId:'DEV-NAVEGADOR',
-          ['orders/'+id+'/equipmentId']:equipmentId
-        };
-
-        // Só volta para Operando se não existir outra O.S. aberta para o mesmo ativo.
-        if(!stillHasOpen){
-          updates['equipments/'+equipmentId+'/status']='Operando';
-          updates['equipments/'+equipmentId+'/updatedAt']=firebase.database.ServerValue.TIMESTAMP;
-          updates['equipments/'+equipmentId+'/updatedByDevice']=typeof deviceId!=='undefined'?deviceId:'DEV-NAVEGADOR';
-        }
-
-        const historyKey=r.child('history').push().key;
-        updates['history/'+historyKey]={
-          date:firebase.database.ServerValue.TIMESTAMP,
-          equipment:order.equipment,
-          event:'OS finalizada: '+(order.description||''),
-          orderId:id,
-          cost:Number(order.cost||0),
-          device:typeof deviceId!=='undefined'?deviceId:'DEV-NAVEGADOR'
-        };
-
-        await r.update(updates);
-        await reconcileCompletedAssets();
-        alert(stillHasOpen?'O.S. finalizada. O ativo permanece em manutenção porque ainda existe outra O.S. aberta.':'O.S. finalizada e o ativo voltou para Operando.');
-      }catch(error){
-        console.error('finishOS:',error);
-        alert('A O.S. não pôde ser finalizada corretamente. Verifique a conexão/permissão do Firebase.');
-      }
-    };
-
-    window.__assetStatusFinishFixed=true;
-    reconcileCompletedAssets();
+    window.__assetStatusLatestRuleInstalled=true;
+    reconcileLatestOrderStatuses();
   }
 
   function boot(){
