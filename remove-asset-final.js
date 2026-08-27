@@ -1,10 +1,10 @@
-/* Remover Ativo - versão 6: botão garantido e remoção pelo ID real do Firebase. */
+/* Remover Ativo - versão 7: usa o mesmo caminho Firebase do CMMS (workshopCMMS/equipments). */
 (function(){
   'use strict';
   var started=false, syncing=false;
   function db(){
     try{
-      if(window.firebase && firebase.apps && firebase.apps.length) return firebase.database();
+      if(window.firebase && firebase.apps && firebase.apps.length) return firebase.database().ref('workshopCMMS/equipments');
     }catch(e){}
     return null;
   }
@@ -18,7 +18,7 @@
     var text=norm(card.innerText||''), best=null, bestScore=-1;
     entries.forEach(function(p,i){
       var id=String(p[0]), e=p[1]||{}, score=0;
-      var vals=[id,nameOf(e,id),e.type,e.localizacao,e.location,e.setor,e.area,e.codigo,e.code];
+      var vals=[id,nameOf(e,id),e.type,e.location,e.localizacao,e.setor,e.area,e.codigo,e.code];
       vals.forEach(function(v){var x=norm(v);if(x&&text.indexOf(x)>=0)score+=x.length>=4?20:3;});
       if(i===index)score+=5;
       if(score>bestScore){bestScore=score;best=p;}
@@ -33,29 +33,48 @@
     var database=db();
     if(!database||!id){alert('Não foi possível identificar este ativo.');return;}
     if(!confirm('Remover o ativo "'+name+'" do cadastro?\n\nEsta ação não pode ser desfeita.'))return;
-    try{await database.ref('equipments').child(String(id)).remove();alert('Ativo removido com sucesso.');}
-    catch(e){console.error('Remover Ativo:',e);alert('Não foi possível remover o ativo. Verifique a conexão com o Firebase.');}
+    try{
+      await database.child(String(id)).remove();
+      alert('Ativo removido com sucesso.');
+    }catch(e){
+      console.error('Remover Ativo:',e);
+      alert('Não foi possível remover o ativo. Verifique a conexão com o Firebase.');
+    }
   }
   function ensureWithEntries(entries){
     var list=document.getElementById('equipmentList');
     if(!list||!entries.length)return;
-    var cards=Array.prototype.slice.call(list.children).filter(function(c){return c&&c.nodeType===1;});
+    var cards=Array.prototype.slice.call(list.children).filter(function(c){return c&&c.nodeType===1&&c.classList.contains('card');});
     cards.forEach(function(card,index){
       var pair=matchCard(card,entries,index);if(!pair)return;
       var id=String(pair[0]||''), e=pair[1]||{}, nm=nameOf(e,id);
       var b=card.querySelector('button[data-remove-asset-final]');
-      if(!b){b=document.createElement('button');b.type='button';b.innerHTML='<i class="fa-solid fa-trash-can" style="margin-right:6px"></i>Remover Ativo';card.appendChild(b);}
+      if(!b){
+        b=document.createElement('button');
+        b.type='button';
+        b.innerHTML='<i class="fa-solid fa-trash-can" style="margin-right:6px"></i>Remover Ativo';
+        card.appendChild(b);
+      }
       b.dataset.assetId=id;b.dataset.assetName=nm;style(b);
-      if(!b.__removeBound){b.__removeBound=true;b.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();removeById(b.dataset.assetId,b.dataset.assetName);});}
+      if(!b.__removeBound){
+        b.__removeBound=true;
+        b.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();removeById(b.dataset.assetId,b.dataset.assetName);});
+      }
     });
   }
   async function sync(){
-    if(syncing)return;var database=db();if(!database)return;syncing=true;
-    try{var snap=await database.ref('equipments').once('value');ensureWithEntries(entriesFrom(snap.val()));}
-    catch(e){console.warn('Remover Ativo:',e)}finally{syncing=false;}
+    if(syncing)return;
+    var database=db();
+    if(!database)return;
+    syncing=true;
+    try{
+      var snap=await database.once('value');
+      ensureWithEntries(entriesFrom(snap.val()));
+    }catch(e){console.warn('Remover Ativo:',e)}finally{syncing=false;}
   }
   function install(){
-    if(started)return;started=true;
+    if(started)return;
+    started=true;
     sync();
     if(window.MutationObserver)new MutationObserver(function(){setTimeout(sync,0);}).observe(document.body,{childList:true,subtree:true});
     setInterval(sync,1000);
