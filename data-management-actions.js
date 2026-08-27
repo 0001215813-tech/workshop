@@ -1,4 +1,4 @@
-/* Gerenciamento de dados - versão robusta */
+/* Gerenciamento de dados - versão robusta 6 */
 (function(){
 'use strict';
 function root(){return window.cmmsRoot||null;}
@@ -49,16 +49,36 @@ function historyButton(){
  return true;
 }
 
-function addAssetButtons(){
+function normalize(v){return String(v??'').trim().toLowerCase().replace(/\s+/g,' ');}
+function cardName(card){
+ const h=card.querySelector('h3');
+ if(h&&h.textContent.trim())return h.textContent.trim();
+ const candidates=[...card.querySelectorAll('div,p,span')].map(x=>x.textContent.trim()).filter(Boolean);
+ return candidates.find(x=>x.length>1&&!/operando|em manutenção|abrir o\.s\.|qr do ativo|horímetro|criticidade|normal/i.test(x))||'';
+}
+
+async function addAssetButtons(){
  const list=document.getElementById('equipmentList');
  if(!list)return false;
- const entries=Object.entries(state().equipments||{});
+ const r=root();
+ if(!r)return false;
+ let raw=state().equipments||{};
+ try{
+   const snap=await r.child('equipments').once('value');
+   raw=snap.val()||raw||{};
+ }catch(e){console.warn('Não foi possível ler equipamentos para os botões de remoção',e);}
+ const entries=Object.entries(raw||{});
  if(!entries.length)return false;
  const cards=[...list.children].filter(c=>c.nodeType===1);
  let changed=false;
  cards.forEach((card,index)=>{
    if(card.querySelector('[data-remove-asset]'))return;
-   const entry=entries[index];
+   const visibleName=normalize(cardName(card));
+   let entry=entries.find(([id,a])=>{
+     const aName=normalize(a?.name||a?.codigo||a?.code||id);
+     return aName===visibleName || (visibleName&&aName&&(visibleName.includes(aName)||aName.includes(visibleName)));
+   });
+   if(!entry)entry=entries[index];
    if(!entry)return;
    const id=entry[0],a=entry[1]||{};
    const wrap=document.createElement('div');
@@ -74,7 +94,10 @@ function addAssetButtons(){
  return changed;
 }
 
-function scan(){historyButton();addAssetButtons();}
+function scan(){
+ historyButton();
+ addAssetButtons();
+}
 function init(){
  scan();
  const observer=new MutationObserver(function(){
@@ -82,7 +105,7 @@ function init(){
    window.__dataMgmtFrame=requestAnimationFrame(function(){window.__dataMgmtFrame=0;scan();});
  });
  observer.observe(document.body,{childList:true,subtree:true});
- [100,300,600,1000,1800,3000,5000,8000].forEach(ms=>setTimeout(scan,ms));
+ [100,300,600,1000,1800,3000,5000,8000,12000].forEach(ms=>setTimeout(scan,ms));
 }
 window.removeAsset=removeAsset;
 window.clearHistory=clearHistory;
