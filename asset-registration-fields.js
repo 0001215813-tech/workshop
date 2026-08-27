@@ -26,6 +26,14 @@
     return `<label class="block"><span class="text-xs font-bold text-slate-400">${label}</span><input id="${id}" type="${type}" value="${safe(value)}" placeholder="${placeholder}" class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700 outline-none focus:border-blue-500"></label>`;
   }
 
+  function getRoot(){
+    if(window.cmmsRoot) return window.cmmsRoot;
+    try{
+      if(window.firebase && typeof firebase.database==='function') return firebase.database().ref('workshopCMMS');
+    }catch(e){console.error('Firebase root fallback',e)}
+    return null;
+  }
+
   function install(){
     if(typeof window.openForm!=='function') return false;
     installModalScroll();
@@ -51,29 +59,34 @@
         field('Responsável pelo ativo','eResponsible','text','Ex.: João da Silva')+
         field('Tipo do equipamento','eType','text','Ex.: Escavadeira hidráulica'),
         async function(){
-          const root=window.cmmsRoot;
-          if(!root) return alert('Firebase ainda não está disponível.');
-          const name=document.getElementById('eName');
-          const r=root.child('equipments').push();
-          await r.set({
-            name:name.value.trim(),
-            code:document.getElementById('eCode').value.trim(),
-            model:document.getElementById('eModel').value.trim(),
-            manufacturer:document.getElementById('eManufacturer').value.trim(),
-            serialNumber:document.getElementById('eSerial').value.trim(),
-            type:document.getElementById('eType').value.trim(),
-            location:document.getElementById('eLoc').value.trim(),
-            year:document.getElementById('eYear').value===''?null:Number(document.getElementById('eYear').value),
-            sector:document.getElementById('eSector').value.trim(),
-            responsible:document.getElementById('eResponsible').value.trim(),
-            horimetro:document.getElementById('eHorimetro').value===''?null:Number(document.getElementById('eHorimetro').value),
-            preventiveLimit:document.getElementById('ePreventiveLimit').value===''?null:Number(document.getElementById('ePreventiveLimit').value),
-            criticality:document.getElementById('eCriticality').value,
-            status:'Operando',
-            createdAt:firebase.database.ServerValue.TIMESTAMP,
-            createdByDevice:window.deviceId||'DEV-NAVEGADOR'
-          });
-          window.closeModal();
+          const root=getRoot();
+          if(!root) return alert('Firebase ainda não está disponível. Aguarde a conexão e tente novamente.');
+          try{
+            const name=document.getElementById('eName');
+            const r=root.child('equipments').push();
+            await r.set({
+              name:name.value.trim(),
+              code:document.getElementById('eCode').value.trim(),
+              model:document.getElementById('eModel').value.trim(),
+              manufacturer:document.getElementById('eManufacturer').value.trim(),
+              serialNumber:document.getElementById('eSerial').value.trim(),
+              type:document.getElementById('eType').value.trim(),
+              location:document.getElementById('eLoc').value.trim(),
+              year:document.getElementById('eYear').value===''?null:Number(document.getElementById('eYear').value),
+              sector:document.getElementById('eSector').value.trim(),
+              responsible:document.getElementById('eResponsible').value.trim(),
+              horimetro:document.getElementById('eHorimetro').value===''?null:Number(document.getElementById('eHorimetro').value),
+              preventiveLimit:document.getElementById('ePreventiveLimit').value===''?null:Number(document.getElementById('ePreventiveLimit').value),
+              criticality:document.getElementById('eCriticality').value,
+              status:'Operando',
+              createdAt:firebase.database.ServerValue.TIMESTAMP,
+              createdByDevice:window.deviceId||'DEV-NAVEGADOR'
+            });
+            window.closeModal();
+          }catch(err){
+            console.error('Erro ao cadastrar ativo',err);
+            alert('Não foi possível salvar o ativo no Firebase. Verifique a conexão/permissão do banco.');
+          }
         }
       );
     };
