@@ -1,6 +1,7 @@
-/* Gerenciamento de dados - versão robusta 6 */
+/* Gerenciamento de dados - remoção de ativos */
 (function(){
 'use strict';
+
 function root(){return window.cmmsRoot||null;}
 function state(){return window.cmmsState||{};}
 function confirmDelete(m){return window.confirm(m+'\n\nEsta ação não pode ser desfeita.');}
@@ -12,7 +13,10 @@ async function removeAsset(id,name){
  try{
    await r.child('equipments/'+id).remove();
    alert('Ativo removido com sucesso.');
- }catch(e){console.error('removeAsset',e);alert('Não foi possível remover o ativo.');}
+ }catch(e){
+   console.error('removeAsset',e);
+   alert('Não foi possível remover o ativo.');
+ }
 }
 
 async function clearHistory(){
@@ -30,7 +34,10 @@ async function clearHistory(){
    const cost=document.getElementById('kpiCost');if(cost)cost.textContent='R$ 0,00';
    const badge=document.getElementById('badge');if(badge)badge.textContent='0';
    alert('Histórico, O.S. e custos acumulados foram limpos com sucesso.');
- }catch(e){console.error('clearHistory',e);alert('Não foi possível limpar os dados do Firebase.');}
+ }catch(e){
+   console.error('clearHistory',e);
+   alert('Não foi possível limpar os dados do Firebase.');
+ }
 }
 
 function text(el){return (el&&el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();}
@@ -50,47 +57,58 @@ function historyButton(){
 }
 
 function normalize(v){return String(v??'').trim().toLowerCase().replace(/\s+/g,' ');}
-function cardName(card){
- const h=card.querySelector('h3');
- if(h&&h.textContent.trim())return h.textContent.trim();
- const candidates=[...card.querySelectorAll('div,p,span')].map(x=>x.textContent.trim()).filter(Boolean);
- return candidates.find(x=>x.length>1&&!/operando|em manutenção|abrir o\.s\.|qr do ativo|horímetro|criticidade|normal/i.test(x))||'';
+function getAssetEntries(){
+ const raw=state().equipments||{};
+ return Object.entries(raw);
 }
 
-async function addAssetButtons(){
+/*
+ * O botão de remoção é criado independentemente da conexão momentânea do
+ * Firebase. Isso evita que uma renderização dos cards aconteça antes de
+ * root estar disponível e faça o botão desaparecer.
+ */
+function addAssetButtons(){
  const list=document.getElementById('equipmentList');
  if(!list)return false;
- const r=root();
- if(!r)return false;
- let raw=state().equipments||{};
- try{
-   const snap=await r.child('equipments').once('value');
-   raw=snap.val()||raw||{};
- }catch(e){console.warn('Não foi possível ler equipamentos para os botões de remoção',e);}
- const entries=Object.entries(raw||{});
+
+ const entries=getAssetEntries();
  if(!entries.length)return false;
- const cards=[...list.children].filter(c=>c.nodeType===1);
+
+ const cards=[...list.children].filter(c=>c&&c.nodeType===1);
  let changed=false;
+
  cards.forEach((card,index)=>{
    if(card.querySelector('[data-remove-asset]'))return;
-   const visibleName=normalize(cardName(card));
-   let entry=entries.find(([id,a])=>{
-     const aName=normalize(a?.name||a?.codigo||a?.code||id);
-     return aName===visibleName || (visibleName&&aName&&(visibleName.includes(aName)||aName.includes(visibleName)));
-   });
-   if(!entry)entry=entries[index];
+
+   let entry=entries[index];
    if(!entry)return;
-   const id=entry[0],a=entry[1]||{};
+
+   const id=entry[0];
+   const asset=entry[1]||{};
+   const name=String(asset.name||asset.codigo||asset.code||id);
+
    const wrap=document.createElement('div');
    wrap.setAttribute('data-remove-asset-wrap','1');
-   wrap.className='mt-3 pt-3 border-t border-slate-800';
+   wrap.style.cssText='margin-top:12px;padding-top:12px;border-top:1px solid #1e293b;';
+
    const btn=document.createElement('button');
-   btn.type='button';btn.setAttribute('data-remove-asset','1');
-   btn.className='w-full bg-red-600/15 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 rounded-xl px-3 py-2 text-xs font-black transition';
-   btn.innerHTML='<i class="fa-solid fa-trash mr-2"></i>Remover Ativo';
-   btn.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();removeAsset(id,String(a.name||a.codigo||a.code||id));});
-   wrap.appendChild(btn);card.appendChild(wrap);changed=true;
+   btn.type='button';
+   btn.setAttribute('data-remove-asset','1');
+   btn.style.cssText='width:100%;padding:9px 12px;border-radius:10px;background:rgba(220,38,38,.14);border:1px solid rgba(239,68,68,.35);color:#fca5a5;font-size:12px;font-weight:800;cursor:pointer;';
+   btn.innerHTML='<i class="fa-solid fa-trash" style="margin-right:7px"></i>Remover Ativo';
+   btn.addEventListener('mouseenter',function(){btn.style.background='rgba(220,38,38,.8)';btn.style.color='#fff';});
+   btn.addEventListener('mouseleave',function(){btn.style.background='rgba(220,38,38,.14)';btn.style.color='#fca5a5';});
+   btn.addEventListener('click',function(ev){
+     ev.preventDefault();
+     ev.stopPropagation();
+     removeAsset(id,name);
+   });
+
+   wrap.appendChild(btn);
+   card.appendChild(wrap);
+   changed=true;
  });
+
  return changed;
 }
 
@@ -98,17 +116,25 @@ function scan(){
  historyButton();
  addAssetButtons();
 }
+
 function init(){
  scan();
+
  const observer=new MutationObserver(function(){
    if(window.__dataMgmtFrame)return;
-   window.__dataMgmtFrame=requestAnimationFrame(function(){window.__dataMgmtFrame=0;scan();});
+   window.__dataMgmtFrame=requestAnimationFrame(function(){
+     window.__dataMgmtFrame=0;
+     scan();
+   });
  });
  observer.observe(document.body,{childList:true,subtree:true});
+
  [100,300,600,1000,1800,3000,5000,8000,12000].forEach(ms=>setTimeout(scan,ms));
 }
+
 window.removeAsset=removeAsset;
 window.clearHistory=clearHistory;
 window.addAssetButtons=addAssetButtons;
+
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
