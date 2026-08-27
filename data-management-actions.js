@@ -1,4 +1,4 @@
-/* Gerenciamento de dados. Mantém as funções existentes e sincroniza a limpeza do histórico com as O.S. concluídas. */
+/* Gerenciamento de dados. Mantém as funções existentes e sincroniza a limpeza completa do histórico com as O.S. */
 (function(){
 'use strict';
 const root=()=>window.cmmsRoot||null;
@@ -20,20 +20,12 @@ async function clearHistory(){
  const h=s.history||{};
  const orders=s.orders||{};
  const historyCount=Object.keys(h).length;
- const completedEntries=Object.entries(orders).filter(([id,o])=>{
-   const status=String(o?.status||'').trim().toLowerCase();
-   return status==='concluída'||status==='concluida';
- });
- const completedCount=completedEntries.length;
- if(!historyCount&&!completedCount){alert('O histórico e as O.S. concluídas já estão vazios.');return;}
- const message=`Limpar histórico e O.S. concluídas?\n\nHistórico: ${historyCount} registro(s)\nO.S. concluídas: ${completedCount} registro(s)\n\nAs O.S. em aberto/em andamento serão mantidas.`;
- if(!confirmDelete(message))return;
+ const ordersCount=Object.keys(orders).length;
+ if(!historyCount&&!ordersCount){alert('O histórico e as O.S. já estão vazios.');return;}
+ if(!confirmDelete(`Limpar todo o histórico de O.S.?\n\nHistórico: ${historyCount} registro(s)\nO.S.: ${ordersCount} registro(s)\n\nIsso deixará o histórico, a lista de O.S. e o custo acumulado zerados.`))return;
  try{
-   const updates={};
-   if(historyCount)updates.history=null;
-   completedEntries.forEach(([id])=>{updates['orders/'+id]=null;});
-   await r.update(updates);
-   alert('Histórico e O.S. concluídas foram limpos com sucesso.');
+   await r.update({history:null,orders:null});
+   alert('Histórico, O.S. e custos acumulados foram limpos com sucesso.');
  }catch(e){console.error(e);alert('Não foi possível limpar os dados.');}
 }
 
