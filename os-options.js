@@ -9,7 +9,7 @@ function newOSCompleta(){
   const parts=st.parts||{};
   const eqEntries=Object.entries(eqs);
   const partEntries=Object.entries(parts);
-  const eqOptions=eqEntries.length?eqEntries.map(([id,e])=>`<option value="${safeOS(e.name||id)}">${safeOS(e.name||id)}${e.code?' — '+safeOS(e.code):''}</option>`).join(''):'<option value="">Nenhum equipamento cadastrado</option>';
+  const eqOptions=eqEntries.length?eqEntries.map(([id,e])=>`<option value="${safeOS(e.name||id)}" data-equipment-id="${safeOS(id)}">${safeOS(e.name||id)}${e.code?' — '+safeOS(e.code):''}</option>`).join(''):'<option value="">Nenhum equipamento cadastrado</option>';
   const partOptions='<option value="">Nenhuma Peça (R$ 0,00)</option>'+partEntries.map(([id,p])=>{const name=p.name||p.item||id;const price=Number(p.cost??p.price??p.unitCost??0);return `<option value="${safeOS(name)}" data-cost="${price}">${safeOS(name)} (R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2})})</option>`}).join('');
   const html=`
   <label class="block"><span class="text-xs font-bold text-slate-400">Selecione o Equipamento:</span><select id="fEq" required class="mt-1 w-full p-3 rounded-xl bg-slate-900 border border-slate-700 outline-none focus:border-blue-500"><option value="">Selecione...</option>${eqOptions}</select></label>
@@ -30,29 +30,54 @@ function newOSCompleta(){
     if(!root){alert('Firebase ainda não está disponível.');return;}
     const eq=fEq.value.trim();
     if(!eq){alert('Selecione o equipamento.');return;}
+    const selectedEquipment=fEq.options[fEq.selectedIndex];
+    const equipmentId=selectedEquipment?.dataset?.equipmentId||'';
     const selectedPart=fPart.options[fPart.selectedIndex];
     const partCost=Number(selectedPart?.dataset?.cost||0);
     const labor=Number(fLabor.value||0);
     const total=partCost+labor;
+    const initialStatus=fStatus.value;
+    const interventionType=fType.value;
+
+    // Regra de status do ativo:
+    // 1) O.S. "Em andamento" -> ativo "Em manutenção".
+    // 2) O.S. Corretiva/Preditiva + "Pendente" -> ativo "Parado".
+    // 3) Demais situações -> mantém o status atual do ativo.
+    let assetStatus=null;
+    if(initialStatus==='Em andamento'){
+      assetStatus='Em manutenção';
+    }else if(initialStatus==='Pendente' && (interventionType==='Corretiva' || interventionType==='Preditiva')){
+      assetStatus='Parado';
+    }
+
     const r=root.child('orders').push();
     const data={
       equipment:eq,
+      equipmentId:equipmentId,
       description:fDesc.value.trim(),
-      type:fType.value,
-      interventionType:fType.value,
+      type:interventionType,
+      interventionType:interventionType,
       technician:fTech.value,
       failureCategory:fCategory.value,
       requiredPart:fPart.value||'',
       partCost:partCost,
       downtimeMinutes:Number(fDowntime.value||0),
       laborCost:labor,
-      priority:fType.value==='Corretiva'?'Alta':'Média',
-      status:fStatus.value,
+      priority:interventionType==='Corretiva'?'Alta':'Média',
+      status:initialStatus,
       cost:total,
       createdAt:firebase.database.ServerValue.TIMESTAMP,
       createdByDevice:typeof deviceId!=='undefined'?deviceId:'DEV-NAVEGADOR'
     };
+
     await r.set(data);
+
+    // Atualiza somente o ativo selecionado, sem alterar qualquer outro cadastro.
+    // O ID é gravado na O.S. e também é usado para evitar depender apenas do nome do equipamento.
+    if(assetStatus && equipmentId){
+      await root.child('equipments/'+equipmentId).update({status:assetStatus});
+    }
+
     closeModal();
     if(typeof tab==='function')tab('ordens');
   });
