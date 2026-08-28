@@ -3,8 +3,6 @@
   'use strict';
   function install(){
     try{
-      if(!window.cmmsRoot) return;
-      const currentGetter=Object.getOwnPropertyDescriptor(window,'cmmsRoot');
       Object.defineProperty(window,'cmmsRoot',{
         configurable:true,
         get:function(){
