@@ -7,12 +7,21 @@ function localDateTimeValue(date){
   const pad=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-function newOSCompleta(){
+async function newOSCompleta(){
   if(typeof openForm!=='function'){alert('Aguarde o formulário carregar.');return;}
   const st=window.cmmsState||{};
   const eqs=st.equipments||{};
   const parts=st.parts||{};
-  const eqEntries=Object.entries(eqs);
+  let eqEntries=Object.entries(eqs);
+  // Fallback direto no mesmo caminho usado pelo restante do sistema.
+  // Isso corrige apenas o carregamento dos equipamentos no formulário de O.S.
+  if(!eqEntries.length && typeof firebase!=='undefined' && firebase.database){
+    try{
+      const snap=await firebase.database().ref('workshopCMMS/equipments').once('value');
+      const directEquipments=snap.val()||{};
+      eqEntries=Object.entries(directEquipments);
+    }catch(err){console.error('Falha ao carregar equipamentos para O.S.',err);}
+  }
   const partEntries=Object.entries(parts);
   const eqOptions=eqEntries.length?eqEntries.map(([id,e])=>`<option value="${safeOS(e.name||id)}" data-equipment-id="${safeOS(id)}">${safeOS(e.name||id)}${e.code?' — '+safeOS(e.code):''}</option>`).join(''):'<option value="">Nenhum equipamento cadastrado</option>';
   const partOptions='<option value="">Nenhuma Peça (R$ 0,00)</option>'+partEntries.map(([id,p])=>{const name=p.name||p.item||id;const price=Number(p.cost??p.price??p.unitCost??0);return `<option value="${safeOS(name)}" data-cost="${price}">${safeOS(name)} (R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2})})</option>`}).join('');
@@ -60,11 +69,6 @@ function newOSCompleta(){
       }
     }
 
-    // Regra de status do ativo:
-    // 1) O.S. "Em andamento" -> ativo "Em manutenção".
-    // 2) O.S. Corretiva/Preditiva + "Pendente" -> ativo "Parado".
-    // 3) O.S. Preventiva + "Pendente" -> manutenção preventiva agendada.
-    // 4) Demais situações -> mantém o status atual do ativo.
     let assetStatus=null;
     if(initialStatus==='Em andamento'){
       assetStatus='Em manutenção';
@@ -97,8 +101,6 @@ function newOSCompleta(){
 
     await r.set(data);
 
-    // Atualiza somente o ativo selecionado, sem alterar qualquer outro cadastro.
-    // O ID é gravado na O.S. e também é usado para evitar depender apenas do nome do equipamento.
     if(assetStatus && equipmentId){
       await root.child('equipments/'+equipmentId).update({status:assetStatus});
     }
