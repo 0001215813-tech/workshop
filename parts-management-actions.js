@@ -2,7 +2,16 @@
 (function(){
 'use strict';
 
-function root(){return window.cmmsRoot||null;}
+function root(){
+  try{
+    if(window.cmmsRoot)return window.cmmsRoot;
+    if(typeof firebase!=='undefined' && firebase.database){
+      if(firebase.apps && firebase.apps.length)return firebase.database().ref();
+      if(typeof firebaseConfig!=='undefined')return firebase.initializeApp(firebaseConfig).database().ref();
+    }
+  }catch(e){console.warn('CMMS parts Firebase bridge:',e)}
+  return null;
+}
 function state(){return window.cmmsState||{};}
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function entries(){return Object.entries(state().parts||{});}
