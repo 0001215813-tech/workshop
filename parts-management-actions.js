@@ -5,8 +5,6 @@
 function getDb(){
   try{
     if(typeof firebase==='undefined' || !firebase.database) return null;
-    // O index.html injeta os SDKs antes do aplicativo. Se o app ainda não
-    // inicializou a instância, inicializamos aqui usando a mesma configuração.
     if(!firebase.apps || !firebase.apps.length){
       if(typeof firebaseConfig==='undefined') return null;
       firebase.initializeApp(firebaseConfig);
@@ -18,9 +16,11 @@ function getDb(){
   }
 }
 
-function root(){
+// As peças do aplicativo ficam no mesmo caminho usado pelo CMMS principal:
+// /workshopCMMS/parts
+function partsRoot(){
   const db=getDb();
-  return db ? db.ref() : null;
+  return db ? db.ref('workshopCMMS/parts') : null;
 }
 function state(){return window.cmmsState||{};}
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
@@ -68,8 +68,8 @@ function ensureModal(){
  m.addEventListener('click',e=>{if(e.target===m)close()});
  m.querySelector('#partsMgmtForm').onsubmit=async e=>{
    e.preventDefault();
-   const db=getDb();
-   if(!db){alert('Não foi possível conectar ao Firebase.');return}
+   const refRoot=partsRoot();
+   if(!refRoot){alert('Não foi possível conectar ao Firebase.');return}
    const btn=m.querySelector('#partsMgmtSave');btn.disabled=true;btn.textContent='Salvando...';
    try{
      const part={
@@ -86,10 +86,10 @@ function ensureModal(){
        createdAt:firebase.database.ServerValue.TIMESTAMP,
        createdByDevice:window.deviceId||'DEV-NAVEGADOR'
      };
-     // Grava diretamente em /parts/<ID> no Realtime Database.
-     const ref=db.ref('parts').push();
+     // Grava exatamente no caminho usado pelas peças existentes:
+     // /workshopCMMS/parts/<ID>
+     const ref=refRoot.push();
      await ref.set(part);
-     // Confirma a gravação lendo o mesmo registro de volta do Firebase.
      const snapshot=await ref.once('value');
      if(!snapshot.exists())throw new Error('O Firebase não confirmou a gravação da peça.');
      close();
@@ -113,9 +113,13 @@ function addBar(){
 }
 
 async function removePart(id,name){
- const db=getDb();if(!db){alert('Não foi possível conectar ao Firebase.');return}
+ const refRoot=partsRoot();if(!refRoot){alert('Não foi possível conectar ao Firebase.');return}
  if(!confirm('Remover a peça "'+name+'" do almoxarifado?\n\nEsta ação não pode ser desfeita.'))return;
- try{await db.ref('parts/'+id).remove();alert('Peça removida do Firebase com sucesso.')}catch(e){console.error('Erro ao remover peça:',e);alert('Não foi possível remover a peça do Firebase.')}}
+ try{
+   await refRoot.child(id).remove();
+   alert('Peça removida do Firebase com sucesso.');
+ }catch(e){console.error('Erro ao remover peça:',e);alert('Não foi possível remover a peça do Firebase.');}
+}
 
 function addRemoveButtons(){
  const list=document.getElementById('partsList');if(!list)return false;const es=entries();if(!es.length)return true;
