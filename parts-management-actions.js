@@ -1,16 +1,26 @@
-/* Gerenciamento de peças do almoxarifado: adicionar e remover sem alterar as demais funções. */
+/* Gerenciamento de peças do almoxarifado: adicionar e remover com persistência REAL no Firebase Realtime Database. */
 (function(){
 'use strict';
 
-function root(){
+function getDb(){
   try{
-    if(window.cmmsRoot)return window.cmmsRoot;
-    if(typeof firebase!=='undefined' && firebase.database){
-      if(firebase.apps && firebase.apps.length)return firebase.database().ref();
-      if(typeof firebaseConfig!=='undefined')return firebase.initializeApp(firebaseConfig).database().ref();
+    if(typeof firebase==='undefined' || !firebase.database) return null;
+    // O index.html injeta os SDKs antes do aplicativo. Se o app ainda não
+    // inicializou a instância, inicializamos aqui usando a mesma configuração.
+    if(!firebase.apps || !firebase.apps.length){
+      if(typeof firebaseConfig==='undefined') return null;
+      firebase.initializeApp(firebaseConfig);
     }
-  }catch(e){console.warn('CMMS parts Firebase bridge:',e)}
-  return null;
+    return firebase.database();
+  }catch(e){
+    console.error('CMMS parts Firebase:',e);
+    return null;
+  }
+}
+
+function root(){
+  const db=getDb();
+  return db ? db.ref() : null;
 }
 function state(){return window.cmmsState||{};}
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
@@ -56,7 +66,41 @@ function ensureModal(){
  const close=()=>m.classList.remove('open');
  m.querySelector('#partsMgmtX').onclick=close;m.querySelector('#partsMgmtCancel').onclick=close;
  m.addEventListener('click',e=>{if(e.target===m)close()});
- m.querySelector('#partsMgmtForm').onsubmit=async e=>{e.preventDefault();const r=root();if(!r){alert('Firebase ainda não está disponível.');return}const btn=m.querySelector('#partsMgmtSave');btn.disabled=true;try{const ref=r.child('parts').push();await ref.set({name:document.getElementById('pmName').value.trim(),code:document.getElementById('pmCode').value.trim(),category:document.getElementById('pmCategory').value.trim(),quantity:Number(document.getElementById('pmQty').value||0),stock:Number(document.getElementById('pmQty').value||0),minStock:Number(document.getElementById('pmMin').value||0),unit:document.getElementById('pmUnit').value,cost:Number(document.getElementById('pmCost').value||0),supplier:document.getElementById('pmSupplier').value.trim(),location:document.getElementById('pmLocation').value.trim(),createdAt:firebase.database.ServerValue.TIMESTAMP,createdByDevice:window.deviceId||'DEV-NAVEGADOR'});close();document.getElementById('partsMgmtForm').reset();document.getElementById('pmQty').value='0';document.getElementById('pmMin').value='0';document.getElementById('pmCost').value='0';alert('Peça adicionada ao almoxarifado com sucesso.')}catch(err){console.error(err);alert('Não foi possível adicionar a peça.')}finally{btn.disabled=false}};
+ m.querySelector('#partsMgmtForm').onsubmit=async e=>{
+   e.preventDefault();
+   const db=getDb();
+   if(!db){alert('Não foi possível conectar ao Firebase.');return}
+   const btn=m.querySelector('#partsMgmtSave');btn.disabled=true;btn.textContent='Salvando...';
+   try{
+     const part={
+       name:document.getElementById('pmName').value.trim(),
+       code:document.getElementById('pmCode').value.trim(),
+       category:document.getElementById('pmCategory').value.trim(),
+       quantity:Number(document.getElementById('pmQty').value||0),
+       stock:Number(document.getElementById('pmQty').value||0),
+       minStock:Number(document.getElementById('pmMin').value||0),
+       unit:document.getElementById('pmUnit').value,
+       cost:Number(document.getElementById('pmCost').value||0),
+       supplier:document.getElementById('pmSupplier').value.trim(),
+       location:document.getElementById('pmLocation').value.trim(),
+       createdAt:firebase.database.ServerValue.TIMESTAMP,
+       createdByDevice:window.deviceId||'DEV-NAVEGADOR'
+     };
+     // Grava diretamente em /parts/<ID> no Realtime Database.
+     const ref=db.ref('parts').push();
+     await ref.set(part);
+     // Confirma a gravação lendo o mesmo registro de volta do Firebase.
+     const snapshot=await ref.once('value');
+     if(!snapshot.exists())throw new Error('O Firebase não confirmou a gravação da peça.');
+     close();
+     document.getElementById('partsMgmtForm').reset();
+     document.getElementById('pmQty').value='0';document.getElementById('pmMin').value='0';document.getElementById('pmCost').value='0';
+     alert('Peça salva no Firebase com sucesso.');
+   }catch(err){
+     console.error('Erro ao salvar peça no Firebase:',err);
+     alert('Não foi possível salvar a peça no Firebase. Verifique a conexão e as regras do Realtime Database.');
+   }finally{btn.disabled=false;btn.textContent='Salvar peça no Firebase'}
+ };
 }
 
 function addBar(){
@@ -68,7 +112,10 @@ function addBar(){
  heading.parentElement.appendChild(bar);return true;
 }
 
-async function removePart(id,name){const r=root();if(!r){alert('Firebase ainda não está disponível.');return}if(!confirm('Remover a peça "'+name+'" do almoxarifado?\n\nEsta ação não pode ser desfeita.'))return;try{await r.child('parts/'+id).remove();alert('Peça removida com sucesso.')}catch(e){console.error(e);alert('Não foi possível remover a peça.')}}
+async function removePart(id,name){
+ const db=getDb();if(!db){alert('Não foi possível conectar ao Firebase.');return}
+ if(!confirm('Remover a peça "'+name+'" do almoxarifado?\n\nEsta ação não pode ser desfeita.'))return;
+ try{await db.ref('parts/'+id).remove();alert('Peça removida do Firebase com sucesso.')}catch(e){console.error('Erro ao remover peça:',e);alert('Não foi possível remover a peça do Firebase.')}}
 
 function addRemoveButtons(){
  const list=document.getElementById('partsList');if(!list)return false;const es=entries();if(!es.length)return true;
