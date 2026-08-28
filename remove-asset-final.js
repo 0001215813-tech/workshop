@@ -27,7 +27,7 @@
   }
   function style(b){
     b.setAttribute('data-remove-asset-final','1');
-    b.style.cssText='display:block!important;width:100%!important;box-sizing:border-box!important;margin-top:12px!important;padding:10px 12px!important;min-height:38px!important;border-radius:10px!important;background:#3f1720!important;border:1px solid #991b1b!important;color:#fca5a5!important;font-size:12px!important;font-weight:900!important;line-height:1.2!important;cursor:pointer!important;visibility:visible!important;opacity:1!important;position:relative!important;z-index:9999!important;';
+    b.style.cssText='display:block!important;width:100%!important;box-sizing:border-box!important;margin-top:12px!important;padding:10px 12px!important;min-height:38px!important;border-radius:10px!important;background:#3f1720!important;border:1px solid #991b1b!important;color:#fca5a5!important;font-size:12px!important;font-weight:900!important;line-height:1.2!important;cursor:pointer!important;visibility:visible!important;opacity:1!important;position:relative!important;z-index:1!important;';
   }
   async function removeById(id,name){
     var database=db();
