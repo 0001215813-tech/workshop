@@ -23,16 +23,16 @@ function fixCards(parts){
     let ent=entries.find(([id,p])=>{const n=label(p,id);return n&&text.includes(n)})||entries[i];
     if(!ent)return;
     const q=quantity(ent[1]||{});
-    let candidates=[...card.querySelectorAll('*')].filter(el=>{
-      if(el.closest('button'))return false;
-      const t=(el.textContent||'').trim();
-      return /^-?\d+(?:[.,]\d+)?$/.test(t);
-    });
-    candidates.sort((a,b)=>{
-      const aa=(a.className||'').toString(),bb=(b.className||'').toString();
-      return (bb.includes('text-3xl')?1:0)-(aa.includes('text-3xl')?1:0);
-    });
-    if(candidates[0] && candidates[0].textContent.trim()!==String(q))candidates[0].textContent=String(q);
+    const candidates=[...card.querySelectorAll('.text-3xl')].filter(el=>!el.closest('button'));
+    const target=candidates[0];
+    if(!target)return;
+    const unit=target.querySelector('span');
+    if(unit){
+      [...target.childNodes].forEach(node=>{if(node.nodeType===3)node.remove();});
+      target.insertBefore(document.createTextNode(String(q)+' '),unit);
+    }else{
+      target.textContent=String(q);
+    }
   });
 }
 async function scan(){fixCards(await getParts());}
