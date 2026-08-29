@@ -3,35 +3,42 @@
 'use strict';
 function root(){return window.cmmsRoot||null;}
 function state(){return window.cmmsState||{};}
-function getRoot(){return root()||window.__firebaseRoot||null;}
+function getRoot(){
+  const r=root()||window.__firebaseRoot||null;
+  if(r)return r;
+  try{if(window.firebase&&firebase.apps&&firebase.apps.length)return firebase.database().ref('workshopCMMS');}catch(e){console.warn('Firebase root fallback',e)}
+  return null;
+}
 function confirmDelete(m){return window.confirm(m+'\n\nEsta ação não pode ser desfeita.');}
 async function removeAsset(id,name){const r=getRoot();if(!r){alert('Firebase ainda não está disponível.');return;}if(!confirmDelete('Remover o ativo "'+name+'" do cadastro?'))return;try{await r.child('equipments/'+id).remove();alert('Ativo removido com sucesso.');}catch(e){console.error('removeAsset',e);alert('Não foi possível remover o ativo.');}}
 async function clearHistory(){
- const r=getRoot();
- if(!r){alert('Firebase ainda não está disponível.');return;}
- if(!confirmDelete('Limpar todo o histórico de O.S.?'))return;
- try{
-   await r.child('history').remove();
-   await r.child('orders').remove();
-   if(window.cmmsState){window.cmmsState.history={};window.cmmsState.orders={};}
-   const ids=['osList','historyList'];ids.forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='';});
-   ['kpiDone','kpiOpen'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='0';});
-   const cost=document.getElementById('kpiCost');if(cost)cost.textContent='R$ 0,00';
-   const badge=document.getElementById('badge');if(badge)badge.textContent='0';
-   alert('Histórico, O.S. e custos acumulados foram limpos com sucesso.');
- }catch(e){console.error('clearHistory',e);alert('Não foi possível limpar os dados do Firebase.');}
+  let r=getRoot();
+  if(!r){alert('Firebase ainda não está disponível.');return;}
+  if(!confirmDelete('Limpar todo o histórico de O.S.?'))return;
+  try{
+    /* O botão "Excluir Histórico" deve apagar apenas o histórico. As O.S. atuais não são removidas. */
+    await r.child('history').remove();
+    if(window.cmmsState)window.cmmsState.history={};
+    const list=document.getElementById('historyList');if(list)list.innerHTML='';
+    const done=document.getElementById('kpiDone');if(done)done.textContent='0';
+    alert('Histórico de O.S. apagado com sucesso.');
+  }catch(e){
+    console.error('clearHistory',e);
+    alert('Não foi possível apagar o histórico no Firebase. Verifique sua conexão e tente novamente.');
+  }
 }
 function text(el){return(el&&el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();}
 function findExportButtons(){return[...document.querySelectorAll('button')].filter(b=>/exportar\s+(excel|planilha)/i.test(text(b)));}
 function cleanHistoryUI(){
  const buttons=findExportButtons();
- if(buttons.length>1){const keep=buttons.find(b=>b.id==='exportXlsxBtn')||buttons[0];buttons.forEach(b=>{if(b!==keep)b.remove();});}
- const exportBtn=document.getElementById('exportXlsxBtn')||findExportButtons()[0];
+ if(buttons.length>1){const keep=buttons.find(b=>b.id==='exportExcelBtn')||buttons.find(b=>b.id==='exportXlsxBtn')||buttons[0];buttons.forEach(b=>{if(b!==keep)b.remove();});}
+ const exportBtn=document.getElementById('exportExcelBtn')||document.getElementById('exportXlsxBtn')||findExportButtons()[0];
  let btn=document.getElementById('clearHistoryBtn');
  if(!exportBtn)return false;
- if(!btn){btn=document.createElement('button');btn.id='clearHistoryBtn';btn.type='button';btn.innerHTML='<i class="fa-solid fa-trash mr-2"></i>Excluir Histórico';btn.onclick=clearHistory;}
+ if(!btn){btn=document.createElement('button');btn.id='clearHistoryBtn';btn.type='button';btn.innerHTML='<i class="fa-solid fa-trash mr-2"></i>Excluir Histórico';}
  btn.className='bg-red-600 hover:bg-red-500 text-white px-4 py-2.5 rounded-xl font-black shadow-lg transition';
- btn.style.cssText='margin-left:8px;';
+ btn.style.cssText='margin-left:8px;cursor:pointer;';
+ btn.onclick=function(ev){ev.preventDefault();ev.stopPropagation();clearHistory();};
  if(btn.parentElement!==exportBtn.parentElement)exportBtn.parentElement.appendChild(btn);
  return true;
 }
