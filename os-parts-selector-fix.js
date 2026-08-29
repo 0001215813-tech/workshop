@@ -1,63 +1,46 @@
-/* Corrige somente a lista de peças da abertura de O.S. — otimizado para evitar travamento. */
+/* Corrige somente a lista de peças da abertura de O.S. */
 (function(){
 'use strict';
-function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-
-let partsRequest=null;
-
-async function loadPartsIntoOS(){
-  const select=document.getElementById('fPart');
-  if(!select || typeof firebase==='undefined' || !firebase.database)return;
-
-  /* Evita várias leituras simultâneas do mesmo caminho. */
-  if(partsRequest){
-    await partsRequest;
-    return;
-  }
-
-  partsRequest=(async()=>{
-    try{
-      const snap=await firebase.database().ref('workshopCMMS/parts').once('value');
-      const parts=snap.val()||{};
-      const current=select.value;
-      const options=Object.entries(parts).map(([id,p])=>{
-        p=p||{};
-        const name=p.name||p.nome||p.item||p.partName||p.descricao||p.description||p.code||p.codigo||id;
-        const price=Number(p.cost??p.price??p.unitCost??0);
-        return `<option value="${esc(name)}" data-cost="${price}">${esc(name)} (R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2})})</option>`;
-      }).join('');
-
-      /* O formulário pode ter sido fechado enquanto o Firebase respondia. */
-      const currentSelect=document.getElementById('fPart');
-      if(!currentSelect)return;
-
-      currentSelect.innerHTML='<option value="">Nenhuma Peça (R$ 0,00)</option>'+options;
-      if(current && [...currentSelect.options].some(o=>o.value===current))currentSelect.value=current;
-    }catch(err){
-      console.error('Falha ao carregar peças do almoxarifado na O.S.',err);
-    }finally{
-      partsRequest=null;
-    }
-  })();
-
-  await partsRequest;
+let loading=null;
+function loadParts(){
+ const select=document.getElementById('fPart');
+ if(!select || typeof firebase==='undefined' || !firebase.database)return Promise.resolve();
+ if(loading)return loading;
+ loading=firebase.database().ref('workshopCMMS/parts').once('value').then(snap=>{
+  const data=snap.val()||{}, current=select.value;
+  const opts=Object.entries(data).map(([id,p])=>{
+   p=p||{};
+   const name=p.name||p.nome||p.item||p.partName||p.descricao||p.description||p.code||p.codigo||id;
+   const price=Number(p.cost??p.price??p.unitCost??0);
+   return {id,name,price};
+  });
+  if(!document.getElementById('fPart'))return;
+  select.innerHTML='<option value="">Nenhuma Peça (R$ 0,00)</option>';
+  opts.forEach(p=>{
+   const o=document.createElement('option'); o.value=p.name; o.dataset.partId=p.id; o.dataset.cost=String(p.price);
+   o.textContent=`${p.name} (R$ ${p.price.toLocaleString('pt-BR',{minimumFractionDigits:2})})`;
+   select.appendChild(o);
+  });
+  if(current && [...select.options].some(o=>o.value===current))select.value=current;
+ }).catch(e=>console.error('Falha ao carregar peças da O.S.',e)).finally(()=>loading=null);
+ return loading;
 }
-
+function schedule(){
+ let n=0;
+ const t=setInterval(()=>{
+  n++;
+  if(document.getElementById('fPart')){clearInterval(t);loadParts();}
+  if(n>=40)clearInterval(t);
+ },100);
+}
 function install(){
-  if(typeof window.newOS!=='function' || window.__osPartsSelectorWrapped)return;
-  const original=window.newOS;
-  const wrapped=async function(){
-    const result=await original.apply(this,arguments);
-    await loadPartsIntoOS();
-    return result;
-  };
-  window.__osPartsSelectorWrapped=true;
-  window.newOS=wrapped;
-  document.querySelectorAll('[onclick="newOS()"], [onclick="newOS() "]').forEach(b=>b.onclick=wrapped);
+ if(window.__osPartsFixInstalled)return;
+ window.__osPartsFixInstalled=true;
+ /* Acompanha apenas o modal, sem observar o DOM inteiro e sem criar loops. */
+ const modal=document.getElementById('modal');
+ if(modal)new MutationObserver(()=>{if(modal.classList.contains('open'))schedule()}).observe(modal,{attributes:true,attributeFilter:['class']});
+ document.addEventListener('click',e=>{const b=e.target.closest?.('button');if(b&&(b.getAttribute('onclick')||'').includes('newOS'))schedule();},{passive:true});
+ schedule();
 }
-
-/* Instala uma única vez. Não observa o DOM inteiro, pois alterar o select
-   dispara MutationObserver e criava um ciclo infinito de leituras Firebase. */
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});
-else install();
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
