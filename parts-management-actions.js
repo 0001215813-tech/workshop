@@ -15,18 +15,11 @@ function getDb(){
     return null;
   }
 }
-
-// As peças do aplicativo ficam no mesmo caminho usado pelo CMMS principal:
-// /workshopCMMS/parts
-function partsRoot(){
-  const db=getDb();
-  return db ? db.ref('workshopCMMS/parts') : null;
-}
+function partsRoot(){ const db=getDb(); return db ? db.ref('workshopCMMS/parts') : null; }
 function state(){return window.cmmsState||{};}
 function esc(v){return String(v??'').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));}
 function entries(){return Object.entries(state().parts||{});}
 function label(p,id){return String(p?.name||p?.nome||p?.partName||p?.descricao||p?.description||p?.code||p?.codigo||id||'Peça');}
-
 function ensureStyles(){
  if(document.getElementById('partsMgmtStyles'))return;
  const s=document.createElement('style');s.id='partsMgmtStyles';s.textContent=`
@@ -50,7 +43,6 @@ function ensureStyles(){
  @media(max-width:600px){#partsMgmtModal .pm-grid{grid-template-columns:1fr}}
  `;document.head.appendChild(s);
 }
-
 function ensureModal(){
  if(document.getElementById('partsMgmtModal'))return;
  const m=document.createElement('div');m.id='partsMgmtModal';m.innerHTML=`<div class="pm-card">
@@ -63,85 +55,24 @@ function ensureModal(){
  <div class="pm-grid"><label><span class="pm-label">Fornecedor</span><input id="pmSupplier" placeholder="Ex.: Caterpillar"></label><label><span class="pm-label">Localização</span><input id="pmLocation" placeholder="Ex.: Prateleira A-01"></label></div>
  <div class="pm-actions"><button id="partsMgmtCancel" type="button">Cancelar</button><button id="partsMgmtSave" type="submit">Salvar peça no Firebase</button></div>
  </form></div>`;document.body.appendChild(m);
- const close=()=>m.classList.remove('open');
- m.querySelector('#partsMgmtX').onclick=close;m.querySelector('#partsMgmtCancel').onclick=close;
- m.addEventListener('click',e=>{if(e.target===m)close()});
- m.querySelector('#partsMgmtForm').onsubmit=async e=>{
-   e.preventDefault();
-   const refRoot=partsRoot();
-   if(!refRoot){alert('Não foi possível conectar ao Firebase.');return}
-   const btn=m.querySelector('#partsMgmtSave');btn.disabled=true;btn.textContent='Salvando...';
-   try{
-     const part={
-       name:document.getElementById('pmName').value.trim(),
-       code:document.getElementById('pmCode').value.trim(),
-       category:document.getElementById('pmCategory').value.trim(),
-       quantity:Number(document.getElementById('pmQty').value||0),
-       stock:Number(document.getElementById('pmQty').value||0),
-       minStock:Number(document.getElementById('pmMin').value||0),
-       unit:document.getElementById('pmUnit').value,
-       cost:Number(document.getElementById('pmCost').value||0),
-       supplier:document.getElementById('pmSupplier').value.trim(),
-       location:document.getElementById('pmLocation').value.trim(),
-       createdAt:firebase.database.ServerValue.TIMESTAMP,
-       createdByDevice:window.deviceId||'DEV-NAVEGADOR'
-     };
-     // Grava exatamente no caminho usado pelas peças existentes:
-     // /workshopCMMS/parts/<ID>
-     const ref=refRoot.push();
-     await ref.set(part);
-     const snapshot=await ref.once('value');
-     if(!snapshot.exists())throw new Error('O Firebase não confirmou a gravação da peça.');
-     close();
-     document.getElementById('partsMgmtForm').reset();
-     document.getElementById('pmQty').value='0';document.getElementById('pmMin').value='0';document.getElementById('pmCost').value='0';
-     alert('Peça salva no Firebase com sucesso.');
-   }catch(err){
-     console.error('Erro ao salvar peça no Firebase:',err);
-     alert('Não foi possível salvar a peça no Firebase. Verifique a conexão e as regras do Realtime Database.');
-   }finally{btn.disabled=false;btn.textContent='Salvar peça no Firebase'}
- };
+ const close=()=>m.classList.remove('open');m.querySelector('#partsMgmtX').onclick=close;m.querySelector('#partsMgmtCancel').onclick=close;m.addEventListener('click',e=>{if(e.target===m)close()});
+ m.querySelector('#partsMgmtForm').onsubmit=async e=>{e.preventDefault();const refRoot=partsRoot();if(!refRoot){alert('Não foi possível conectar ao Firebase.');return}const btn=m.querySelector('#partsMgmtSave');btn.disabled=true;btn.textContent='Salvando...';try{const part={name:document.getElementById('pmName').value.trim(),code:document.getElementById('pmCode').value.trim(),category:document.getElementById('pmCategory').value.trim(),quantity:Number(document.getElementById('pmQty').value||0),stock:Number(document.getElementById('pmQty').value||0),minStock:Number(document.getElementById('pmMin').value||0),unit:document.getElementById('pmUnit').value,cost:Number(document.getElementById('pmCost').value||0),supplier:document.getElementById('pmSupplier').value.trim(),location:document.getElementById('pmLocation').value.trim(),createdAt:firebase.database.ServerValue.TIMESTAMP,createdByDevice:window.deviceId||'DEV-NAVEGADOR'};const ref=refRoot.push();await ref.set(part);const snapshot=await ref.once('value');if(!snapshot.exists())throw new Error('O Firebase não confirmou a gravação da peça.');close();document.getElementById('partsMgmtForm').reset();document.getElementById('pmQty').value='0';document.getElementById('pmMin').value='0';document.getElementById('pmCost').value='0';alert('Peça salva no Firebase com sucesso.')}catch(err){console.error('Erro ao salvar peça no Firebase:',err);alert('Não foi possível salvar a peça no Firebase. Verifique a conexão e as regras do Realtime Database.')}finally{btn.disabled=false;btn.textContent='Salvar peça no Firebase'}};
 }
-
-function addBar(){
- const section=document.getElementById('estoque');if(!section)return false;
- if(document.getElementById('partsMgmtBar'))return true;
- const heading=section.querySelector('h2');if(!heading)return false;
- const bar=document.createElement('div');bar.id='partsMgmtBar';
- const b=document.createElement('button');b.id='partsMgmtAdd';b.type='button';b.innerHTML='<i class="fa-solid fa-plus" style="margin-right:7px"></i>Adicionar Peça';b.onclick=()=>{ensureModal();document.getElementById('partsMgmtModal').classList.add('open');setTimeout(()=>document.getElementById('pmName')?.focus(),50)};bar.appendChild(b);
- heading.parentElement.appendChild(bar);return true;
-}
-
-async function removePart(id,name){
- const refRoot=partsRoot();if(!refRoot){alert('Não foi possível conectar ao Firebase.');return}
- if(!confirm('Remover a peça "'+name+'" do almoxarifado?\n\nEsta ação não pode ser desfeita.'))return;
- try{
-   await refRoot.child(id).remove();
-   alert('Peça removida do Firebase com sucesso.');
- }catch(e){console.error('Erro ao remover peça:',e);alert('Não foi possível remover a peça do Firebase.');}
-}
-
+function addBar(){const section=document.getElementById('estoque');if(!section)return false;if(document.getElementById('partsMgmtBar'))return true;const heading=section.querySelector('h2');if(!heading)return false;const bar=document.createElement('div');bar.id='partsMgmtBar';const b=document.createElement('button');b.id='partsMgmtAdd';b.type='button';b.innerHTML='<i class="fa-solid fa-plus" style="margin-right:7px"></i>Adicionar Peça';b.onclick=()=>{ensureModal();document.getElementById('partsMgmtModal').classList.add('open');setTimeout(()=>document.getElementById('pmName')?.focus(),50)};bar.appendChild(b);heading.parentElement.appendChild(bar);return true;}
+async function removePart(id,name){const refRoot=partsRoot();if(!refRoot){alert('Não foi possível conectar ao Firebase.');return}if(!confirm('Remover a peça "'+name+'" do almoxarifado?\n\nEsta ação não pode ser desfeita.'))return;try{await refRoot.child(id).remove();alert('Peça removida do Firebase com sucesso.')}catch(e){console.error('Erro ao remover peça:',e);alert('Não foi possível remover a peça do Firebase.')}}
 function addRemoveButtons(){
  const list=document.getElementById('partsList');if(!list)return false;const es=entries();if(!es.length)return true;
  const cards=[...list.children].filter(x=>x&&x.nodeType===1);
- cards.forEach((card,i)=>{if(card.querySelector('.parts-remove-btn'))return;const ent=es[i];if(!ent)return;const id=ent[0],p=ent[1]||{};const b=document.createElement('button');b.type='button';b.className='parts-remove-btn';b.innerHTML='<i class="fa-solid fa-trash" style="margin-right:7px"></i>Remover Peça';b.onclick=e=>{e.preventDefault();e.stopPropagation();removePart(id,label(p,id))};card.appendChild(b)});return true;
+ cards.forEach((card,i)=>{
+   // O aplicativo principal já possui o botão nativo "Remover Peça".
+   // Só injeta um botão quando não existir nenhum botão de remoção no card.
+   const hasNativeRemove=[...card.querySelectorAll('button')].some(b=>/remover\s+pe[cç]a/i.test((b.textContent||'').trim()));
+   if(hasNativeRemove)return;
+   if(card.querySelector('.parts-remove-btn'))return;
+   const ent=es[i];if(!ent)return;const id=ent[0],p=ent[1]||{};const b=document.createElement('button');b.type='button';b.className='parts-remove-btn';b.innerHTML='<i class="fa-solid fa-trash" style="margin-right:7px"></i>Remover Peça';b.onclick=e=>{e.preventDefault();e.stopPropagation();removePart(id,label(p,id))};card.appendChild(b)
+ });return true;
 }
-
-function syncPartQuantities(){
- const parts=state().parts||{};
- Object.values(parts).forEach(p=>{
-   if(!p||typeof p!=='object')return;
-   if(p.qty===undefined||p.qty===null||p.qty===''){
-     const source=p.quantity!==undefined&&p.quantity!==null?p.quantity:p.stock;
-     if(source!==undefined&&source!==null&&source!=='')p.qty=Number(source);
-   }
-   if(p.min===undefined||p.min===null||p.min===''){
-     const source=p.minStock;
-     if(source!==undefined&&source!==null&&source!=='')p.min=Number(source);
-   }
- });
-}
-
+function syncPartQuantities(){const parts=state().parts||{};Object.values(parts).forEach(p=>{if(!p||typeof p!=='object')return;if(p.qty===undefined||p.qty===null||p.qty===''){const source=p.quantity!==undefined&&p.quantity!==null?p.quantity:p.stock;if(source!==undefined&&source!==null&&source!=='')p.qty=Number(source)}if(p.min===undefined||p.min===null||p.min===''){const source=p.minStock;if(source!==undefined&&source!==null&&source!=='')p.min=Number(source)}})}
 function scan(){ensureStyles();ensureModal();syncPartQuantities();addBar();addRemoveButtons()}
 function init(){scan();const ob=new MutationObserver(()=>{if(window.__partsMgmtFrame)return;window.__partsMgmtFrame=requestAnimationFrame(()=>{window.__partsMgmtFrame=0;scan()})});ob.observe(document.body,{childList:true,subtree:true});[300,800,1500,3000,5000,8000].forEach(ms=>setTimeout(scan,ms))}
 window.addInventoryPart=()=>{ensureModal();document.getElementById('partsMgmtModal').classList.add('open')};window.removeInventoryPart=removePart;
