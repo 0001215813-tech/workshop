@@ -25,10 +25,11 @@
     return [o?.updatedAt,o?.completedAt,o?.createdAt,o?.date].map(Number).find(n=>Number.isFinite(n)&&n>0)||0;
   }
 
-  function latestPreventiveOrder(equipmentId,equipments,orders){
+  // Qualquer manutenção agendada/em execução/concluída para o ativo
+  // encerra o alerta preventivo atual daquele ativo.
+  function latestMaintenanceOrder(equipmentId,equipments,orders){
     const related=Object.values(orders||{}).filter(o=>{
       if(!o)return false;
-      if(norm(o.type||o.interventionType||o.tipo)!=='preventiva')return false;
       return resolveEquipmentId(o,equipments)===equipmentId;
     });
     related.sort((a,b)=>orderTime(b)-orderTime(a));
@@ -38,7 +39,7 @@
   function maintenanceSatisfied(order){
     if(!order)return false;
     const s=norm(order.status);
-    return s==='pendente'||s==='aberta'||s==='aberto'||s==='em andamento'||s==='em manutencao'||s==='concluida';
+    return s==='pendente'||s==='aberta'||s==='aberto'||s==='em andamento'||s==='em manutencao'||s==='concluida'||s==='concluída';
   }
 
   function installStyles(){
@@ -78,7 +79,7 @@
       const current=num(e.horimetro);
       const limit=num(e.preventiveLimit);
       if(current===null||limit===null||limit<=0||current<limit)return;
-      const latest=latestPreventiveOrder(id,equipments,orders);
+      const latest=latestMaintenanceOrder(id,equipments,orders);
       if(maintenanceSatisfied(latest))return;
       alarmCount++;
       card.classList.add('preventive-alarm-card');
