@@ -1,4 +1,4 @@
-/* Sistema de atualização do horímetro dos equipamentos. Usa workshopCMMS/equipments no Firebase. */
+/* Sistema de atualização do horímetro dos equipamentos. Respeita a raiz workshopCMMS usada pelo aplicativo. */
 (function(){
   'use strict';
   if(window.__horimetroActionsInstalled)return;
@@ -6,6 +6,9 @@
 
   const root=()=>window.cmmsRoot||null;
   const num=v=>{const n=Number(String(v??'').replace(',','.'));return Number.isFinite(n)?n:0};
+  function cmmsRootPath(r){try{const u=String(r.toString()).replace(/\/$/,'');return /\/workshopCMMS$/i.test(u)?'':'workshopCMMS/'}catch(e){return ''}}
+  function equipmentPath(r,id){return cmmsRootPath(r)+'equipments/'+id}
+  function historyPath(r){return cmmsRootPath(r)+'history'}
 
   function styles(){
     if(document.getElementById('horimetro-actions-style'))return;
@@ -29,9 +32,6 @@
     `;document.head.appendChild(s);
   }
 
-  function equipmentPath(id){return 'workshopCMMS/equipments/'+id}
-  function historyPath(){return 'workshopCMMS/history'}
-
   function modal(){
     let el=document.getElementById('horimetro-modal-overlay');if(el)return el;
     el=document.createElement('div');el.id='horimetro-modal-overlay';
@@ -53,9 +53,8 @@
 
   async function findEquipmentByName(name){
     const r=root();if(!r)return null;
-    const snap=await r.child('workshopCMMS/equipments').once('value');
-    const data=snap.val()||{};
-    const wanted=String(name||'').trim().toLowerCase();
+    const snap=await r.child(cmmsRootPath(r)+'equipments').once('value');
+    const data=snap.val()||{};const wanted=String(name||'').trim().toLowerCase();
     for(const [id,e] of Object.entries(data)){
       const n=String(e?.name||e?.nome||e?.codigo||e?.code||'').trim();
       if(n.toLowerCase()===wanted)return [id,e];
@@ -67,10 +66,7 @@
     const r=root();
     if(!r)return alert('Firebase ainda não está disponível. Aguarde a conexão e tente novamente.');
     let entry=equipment&&id?[id,equipment]:null;
-    if(!entry){
-      const name=typeof equipment==='string'?equipment:'';
-      entry=await findEquipmentByName(name);
-    }
+    if(!entry)entry=await findEquipmentByName(typeof equipment==='string'?equipment:'');
     if(!entry)return alert('Equipamento não encontrado no Firebase.');
     id=entry[0];equipment=entry[1];
     const m=modal();const current=num(equipment?.horimetro);
@@ -84,11 +80,10 @@
       if(!(add>0)){alert('Informe uma quantidade de horas maior que zero.');return}
       btn.disabled=true;btn.textContent='Atualizando...';
       try{
-        const ref=r.child(equipmentPath(id));
-        const snap=await ref.once('value');const fresh=snap.val()||equipment||{};
-        const next=num(fresh.horimetro)+add;
+        const ref=r.child(equipmentPath(r,id));
+        const snap=await ref.once('value');const fresh=snap.val()||equipment||{};const next=num(fresh.horimetro)+add;
         await ref.update({horimetro:next,updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedByDevice:window.deviceId||'DEV-NAVEGADOR'});
-        const h=r.child(historyPath()).push();
+        const h=r.child(historyPath(r)).push();
         await h.set({date:firebase.database.ServerValue.TIMESTAMP,equipment:fresh.name||fresh.nome||id,event:'Horímetro atualizado: +'+add+' h'+(reason?' — '+reason:''),orderId:'-',cost:0,device:window.deviceId||'DEV-NAVEGADOR'});
         m.classList.remove('open');
       }catch(err){console.error('Erro ao atualizar horímetro:',err);alert('Não foi possível atualizar o horímetro no Firebase. Verifique a conexão/permissão.');}
@@ -103,7 +98,7 @@
       const title=card.querySelector('h3');const name=(title?.textContent||'').trim();if(!name)return;
       const wrap=document.createElement('div');wrap.className='horimetro-action-wrap';
       const b=document.createElement('button');b.type='button';b.className='horimetro-action-btn';
-      b.innerHTML='<i class="fa-solid fa-gauge-high" style="margin-right:6px"></i>Aumentar Horímetro>';
+      b.innerHTML='<i class="fa-solid fa-gauge-high" style="margin-right:6px"></i>Aumentar Horímetro';
       b.onclick=()=>openHorimetro(null,name);wrap.appendChild(b);card.appendChild(wrap);
     });
   }
@@ -113,6 +108,5 @@
     [250,600,1200,2000,4000].forEach(ms=>setTimeout(addButtons,ms));
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
-  window.aumentarHorimetro=openHorimetro;
-  window.aumentarHorimetroPorNome=name=>openHorimetro(null,name);
+  window.aumentarHorimetro=openHorimetro;window.aumentarHorimetroPorNome=name=>openHorimetro(null,name);
 })();
