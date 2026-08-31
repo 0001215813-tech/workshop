@@ -38,7 +38,20 @@ function cleanHistoryUI(){
  return true;
 }
 function getAssetEntries(){const raw=state().equipments||{};return Object.entries(raw);}
-function addAssetButtons(){const list=document.getElementById('equipmentList');if(!list)return false;const entries=getAssetEntries();if(!entries.length)return false;const cards=[...list.children].filter(c=>c&&c.nodeType===1);cards.forEach((card,index)=>{if(card.querySelector('[data-remove-asset]'))return;const entry=entries[index];if(!entry)return;const id=entry[0],asset=entry[1]||{},name=String(asset.name||asset.codigo||asset.code||id);const wrap=document.createElement('div');wrap.setAttribute('data-remove-asset-wrap','1');wrap.style.cssText='margin-top:12px;padding-top:12px;border-top:1px solid #1e293b;';const btn=document.createElement('button');btn.type='button';btn.setAttribute('data-remove-asset','1');btn.style.cssText='width:100%;padding:9px 12px;border-radius:10px;background:rgba(220,38,38,.14);border:1px solid rgba(239,68,68,.35);color:#fca5a5;font-size:12px;font-weight:800;cursor:pointer;';btn.innerHTML='<i class="fa-solid fa-trash" style="margin-right:7px"></i>Remover Ativo';btn.addEventListener('click',ev=>{ev.preventDefault();ev.stopPropagation();removeAsset(id,name);});wrap.appendChild(btn);card.appendChild(wrap);});return true;}
+function addAssetButtons(){
+ const list=document.getElementById('equipmentList');if(!list)return false;const entries=getAssetEntries();if(!entries.length)return false;
+ const cards=[...list.children].filter(c=>c&&c.nodeType===1);
+ cards.forEach((card,index)=>{
+   const removeButtons=[...card.querySelectorAll('button')].filter(b=>/remover\s+ativo/i.test((b.textContent||'').replace(/\s+/g,' ').trim()));
+   // Mantém somente o primeiro botão de remoção já existente no card.
+   // Se o aplicativo principal já renderizou o botão, não cria outro.
+   removeButtons.slice(1).forEach(b=>b.remove());
+   if(removeButtons.length)return;
+   const entry=entries[index];if(!entry)return;const id=entry[0],asset=entry[1]||{},name=String(asset.name||asset.codigo||asset.code||id);
+   const wrap=document.createElement('div');wrap.setAttribute('data-remove-asset-wrap','1');wrap.style.cssText='margin-top:12px;padding-top:12px;border-top:1px solid #1e293b;';
+   const btn=document.createElement('button');btn.type='button';btn.setAttribute('data-remove-asset','1');btn.style.cssText='width:100%;padding:9px 12px;border-radius:10px;background:rgba(220,38,38,.14);border:1px solid rgba(239,68,68,.35);color:#fca5a5;font-size:12px;font-weight:800;cursor:pointer';btn.innerHTML='<i class="fa-solid fa-trash" style="margin-right:7px"></i>Remover Ativo';btn.addEventListener('click',ev=>{ev.preventDefault();ev.stopPropagation();removeAsset(id,name);});wrap.appendChild(btn);card.appendChild(wrap);
+ });return true;
+}
 function scan(){cleanHistoryUI();addAssetButtons();}
 function init(){scan();const observer=new MutationObserver(()=>{if(window.__dataMgmtFrame)return;window.__dataMgmtFrame=requestAnimationFrame(()=>{window.__dataMgmtFrame=0;scan();});});observer.observe(document.body,{childList:true,subtree:true});[100,300,600,1000,1800,3000].forEach(ms=>setTimeout(scan,ms));}
 window.removeAsset=removeAsset;window.clearHistory=clearHistory;window.addAssetButtons=addAssetButtons;if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
