@@ -37,9 +37,30 @@ function cleanHistoryUI(){
  if(btn.parentElement!==exportBtn.parentElement)exportBtn.parentElement.appendChild(btn);
  return true;
 }
-function getAssetEntries(){const raw=state().equipments||{};return Object.entries(raw);}
-/* O botão "Remover Ativo" já é criado pelo aplicativo principal. Este módulo não injeta outro. */
-function addAssetButtons(){return true;}
+function getAssetEntries(){return Object.entries(state().equipments||{});}
+function addAssetButtons(){
+ const list=document.getElementById('equipmentList');
+ if(!list)return false;
+ const es=getAssetEntries();
+ const cards=[...list.children].filter(c=>c&&c.nodeType===1);
+ cards.forEach((card,index)=>{
+   const matches=[...card.querySelectorAll('button')].filter(b=>/remover\s+ativo/i.test(text(b)));
+   if(matches.length>1){matches.slice(1).forEach(b=>b.remove());return;}
+   if(matches.length===1)return;
+   const entry=es[index];
+   if(!entry)return;
+   const id=entry[0],name=entry[1]?.name||entry[1]?.codigo||entry[1]?.code||id;
+   const b=document.createElement('button');
+   b.type='button';
+   b.className='w-full mt-3 p-3 rounded-xl bg-red-900/30 border border-red-500/40 text-red-300 font-black hover:bg-red-900/50';
+   b.setAttribute('data-asset-remove','1');
+   b.innerHTML='<i class="fa-solid fa-trash mr-2"></i>Remover Ativo';
+   b.onclick=e=>{e.preventDefault();e.stopPropagation();removeAsset(id,String(name));};
+   const anchor=[...card.querySelectorAll('button')].find(x=>/abrir\s+o\.s\./i.test(text(x)))||card.lastElementChild;
+   if(anchor&&anchor.parentElement===card)card.insertBefore(b,anchor);else card.appendChild(b);
+ });
+ return true;
+}
 function scan(){cleanHistoryUI();addAssetButtons();}
 function init(){scan();const observer=new MutationObserver(()=>{if(window.__dataMgmtFrame)return;window.__dataMgmtFrame=requestAnimationFrame(()=>{window.__dataMgmtFrame=0;scan();});});observer.observe(document.body,{childList:true,subtree:true});[100,300,600,1000,1800,3000].forEach(ms=>setTimeout(scan,ms));}
 window.removeAsset=removeAsset;window.clearHistory=clearHistory;window.addAssetButtons=addAssetButtons;if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
