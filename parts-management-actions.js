@@ -10,10 +10,7 @@ function getDb(){
       firebase.initializeApp(firebaseConfig);
     }
     return firebase.database();
-  }catch(e){
-    console.error('CMMS parts Firebase:',e);
-    return null;
-  }
+  }catch(e){ console.error('CMMS parts Firebase:',e); return null; }
 }
 function partsRoot(){ const db=getDb(); return db ? db.ref('workshopCMMS/parts') : null; }
 function state(){return window.cmmsState||{};}
@@ -64,17 +61,18 @@ function addRemoveButtons(){
  const list=document.getElementById('partsList');if(!list)return false;const es=entries();if(!es.length)return true;
  const cards=[...list.children].filter(x=>x&&x.nodeType===1);
  cards.forEach((card,i)=>{
-   // O aplicativo principal já possui o botão nativo "Remover Peça".
-   // Só injeta um botão quando não existir nenhum botão de remoção no card.
-   const hasNativeRemove=[...card.querySelectorAll('button')].some(b=>/remover\s+pe[cç]a/i.test((b.textContent||'').trim()));
-   if(hasNativeRemove)return;
+   const removeButtons=[...card.querySelectorAll('button')].filter(b=>/remover\s+pe[cç]a/i.test((b.textContent||'').replace(/\s+/g,' ').trim()));
+   // Mantém somente o primeiro botão de remoção já renderizado pelo aplicativo.
+   // Isso evita duplicação mesmo quando a renderização principal ocorre depois deste módulo.
+   removeButtons.slice(1).forEach(b=>b.remove());
+   if(removeButtons.length)return;
    if(card.querySelector('.parts-remove-btn'))return;
    const ent=es[i];if(!ent)return;const id=ent[0],p=ent[1]||{};const b=document.createElement('button');b.type='button';b.className='parts-remove-btn';b.innerHTML='<i class="fa-solid fa-trash" style="margin-right:7px"></i>Remover Peça';b.onclick=e=>{e.preventDefault();e.stopPropagation();removePart(id,label(p,id))};card.appendChild(b)
  });return true;
 }
 function syncPartQuantities(){const parts=state().parts||{};Object.values(parts).forEach(p=>{if(!p||typeof p!=='object')return;if(p.qty===undefined||p.qty===null||p.qty===''){const source=p.quantity!==undefined&&p.quantity!==null?p.quantity:p.stock;if(source!==undefined&&source!==null&&source!=='')p.qty=Number(source)}if(p.min===undefined||p.min===null||p.min===''){const source=p.minStock;if(source!==undefined&&source!==null&&source!=='')p.min=Number(source)}})}
 function scan(){ensureStyles();ensureModal();syncPartQuantities();addBar();addRemoveButtons()}
-function init(){scan();const ob=new MutationObserver(()=>{if(window.__partsMgmtFrame)return;window.__partsMgmtFrame=requestAnimationFrame(()=>{window.__partsMgmtFrame=0;scan()})});ob.observe(document.body,{childList:true,subtree:true});[300,800,1500,3000,5000,8000].forEach(ms=>setTimeout(scan,ms))}
+function init(){scan();const ob=new MutationObserver(()=>{if(window.__partsMgmtFrame)return;ob&&requestAnimationFrame(()=>{window.__partsMgmtFrame=0;scan()})});ob.observe(document.body,{childList:true,subtree:true});[300,800,1500,3000,5000,8000].forEach(ms=>setTimeout(scan,ms))}
 window.addInventoryPart=()=>{ensureModal();document.getElementById('partsMgmtModal').classList.add('open')};window.removeInventoryPart=removePart;
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
