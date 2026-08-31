@@ -6,16 +6,18 @@ function root(){try{return window.cmmsRoot||null}catch(e){return null;}}
 async function deduct(id,o){
  const r=root(); if(!r||!o||o.partsConsumedAt)return;
  const name=String(o.requiredPart||o.part||o.partName||o.peca||'').trim(); if(!name)return;
- const marker=r.child('orders/'+id+'/partsConsumedAt');
- const tx=await marker.transaction(v=>v==null?Date.now():v);
- if(!tx.committed)return;
  try{
   const snap=await r.child('parts').once('value'); const parts=snap.val()||{}; const wanted=name.toLowerCase();
   const hit=Object.entries(parts).find(([k,p])=>String((p||{}).name||(p||{}).nome||(p||{}).item||(p||{}).partName||(p||{}).descricao||(p||{}).description||(p||{}).code||(p||{}).codigo||'').trim().toLowerCase()===wanted);
   if(!hit)return;
   const p=hit[1]||{}; const key=p.quantity!=null?'quantity':p.stock!=null?'stock':p.qty!=null?'qty':p.quantidade!=null?'quantidade':'quantity';
-  await r.child('parts/'+hit[0]+'/'+key).transaction(v=>Math.max(0,Number(v||0)-1));
- }catch(e){console.error('Falha ao dar baixa na peça da O.S.',e);await marker.remove().catch(()=>{});}
+  const rawQty=o.quantityUsed??o.usedQuantity??o.consumedQuantity??o.partQuantity??o.quantityConsumed??o.quantidadePeca??o.quantidadeUsada??1;
+  const qty=Math.max(1,Number(rawQty)||1);
+  const stockRef=r.child('parts/'+hit[0]+'/'+key);
+  const tx=await stockRef.transaction(v=>Math.max(0,Number(v||0)-qty));
+  if(!tx.committed)return;
+  await r.child('orders/'+id+'/partsConsumedAt').set(Date.now());
+ }catch(e){console.error('Falha ao dar baixa na peça da O.S.',e)}
 }
 function install(){
  if(window.__osPartsStockDeductionInstalled)return;
