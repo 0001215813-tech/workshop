@@ -1,8 +1,3 @@
-/*
- * Módulo de compatibilidade.
- * A remoção de peças já é fornecida por parts-management-actions.js.
- * Este arquivo permanece carregado, mas não injeta botões adicionais.
- */
-(function(){
-  'use strict';
-})();
+(function(){'use strict';
+function inject(){var list=document.getElementById('partsList');if(!list)return;var parts=(window.cmmsState||{}).parts||{};var entries=Object.entries(parts);Array.from(list.children).forEach(function(card,i){var found=Array.from(card.querySelectorAll('button')).find(function(b){return /remover\s+peça/i.test(b.textContent||'')});if(found)return;var en=entries[i];if(!en)return;var id=en[0],p=en[1]||{},name=String(p.name||p.nome||p.partName||p.descricao||p.description||p.code||p.codigo||id);var b=document.createElement('button');b.type='button';b.dataset.removePart='1';b.style.cssText='width:100%;padding:10px 12px;margin-top:10px;border-radius:10px;background:#7f1d1d;color:#fecaca;border:1px solid #ef4444;font-weight:900;cursor:pointer';b.innerHTML='<i class="fa-solid fa-trash" style="margin-right:7px"></i>Remover Peça';b.onclick=function(e){e.preventDefault();e.stopPropagation();if(!confirm('Remover a peça "'+name+'" do almoxarifado?'))return;try{firebase.database().ref('workshopCMMS/parts/'+id).remove().then(function(){alert('Peça removida com sucesso.')}).catch(function(){alert('Não foi possível remover a peça.')})}catch(x){alert('Firebase ainda não está disponível.')}};card.appendChild(b)})}
+function start(){inject();setInterval(inject,700);var l=document.getElementById('partsList');if(l)new MutationObserver(inject).observe(l,{childList:true,subtree:true})}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();})();
