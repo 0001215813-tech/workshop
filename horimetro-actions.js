@@ -1,115 +1,23 @@
-/* Sistema de atualização do horímetro dos equipamentos. Respeita a raiz workshopCMMS usada pelo aplicativo. */
+/* Sistema de atualização do horímetro dos equipamentos. */
 (function(){
-  'use strict';
-  if(window.__horimetroActionsInstalled)return;
-  window.__horimetroActionsInstalled=true;
-
-  const root=()=>window.cmmsRoot||null;
-  const num=v=>{const n=Number(String(v??'').replace(',','.'));return Number.isFinite(n)?n:0};
-  function cmmsRootPath(r){try{const u=String(r.toString()).replace(/\/$/,'');return /\/workshopCMMS$/i.test(u)?'':'workshopCMMS/'}catch(e){return ''}}
-  function equipmentPath(r,id){return cmmsRootPath(r)+'equipments/'+id}
-  function historyPath(r){return cmmsRootPath(r)+'history'}
-
-  function styles(){
-    if(document.getElementById('horimetro-actions-style'))return;
-    const s=document.createElement('style');s.id='horimetro-actions-style';
-    s.textContent=`
-      .horimetro-action-wrap{margin-top:10px;display:flex;gap:8px}
-      .horimetro-action-btn{flex:1;border:1px solid #2563eb;background:#172554;color:#bfdbfe;border-radius:10px;padding:9px 10px;font-size:12px;font-weight:800;cursor:pointer;transition:.2s}
-      .horimetro-action-btn:hover{background:#2563eb;color:#fff}
-      .horimetro-action-btn:disabled{opacity:.6;cursor:wait}
-      #horimetro-modal-overlay{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.78);backdrop-filter:blur(5px);padding:16px}
-      #horimetro-modal-overlay.open{display:flex}
-      #horimetro-modal-card{width:100%;max-width:460px;background:linear-gradient(145deg,#111c32,#0b1426);border:1px solid #2d4264;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.5);padding:22px;box-sizing:border-box}
-      .hm-label{display:block;font-size:11px;font-weight:800;color:#94a3b8;margin-bottom:6px}
-      .hm-input{width:100%;box-sizing:border-box;padding:12px;border-radius:11px;background:#020617;color:#e2e8f0;border:1px solid #334155;outline:none;font-weight:700}
-      .hm-input:focus{border-color:#3b82f6}
-      .hm-actions{display:flex;gap:8px;margin-top:14px}
-      .hm-cancel,.hm-confirm{flex:1;border:0;border-radius:11px;padding:11px;font-weight:900;cursor:pointer}
-      .hm-cancel{background:#1e293b;color:#e2e8f0}.hm-confirm{background:#2563eb;color:#fff}
-      .hm-current{margin:14px 0;padding:12px;border-radius:11px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;font-size:12px}
-      .hm-current strong{color:#fff;font-size:20px;margin-left:5px}
-    `;document.head.appendChild(s);
-  }
-
-  function modal(){
-    let el=document.getElementById('horimetro-modal-overlay');if(el)return el;
-    el=document.createElement('div');el.id='horimetro-modal-overlay';
-    el.innerHTML=`<div id="horimetro-modal-card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-        <div><div style="font-size:10px;color:#60a5fa;font-weight:900;text-transform:uppercase;letter-spacing:.12em">Horímetro</div><div id="hm-title" style="font-size:20px;font-weight:900;margin-top:3px"></div></div>
-        <button id="hm-close" type="button" style="width:36px;height:36px;border:0;border-radius:9px;background:#1e293b;color:#e2e8f0;font-size:18px;cursor:pointer">✕</button>
-      </div>
-      <div id="hm-current" class="hm-current"></div>
-      <label><span class="hm-label">QUANTIDADE DE HORAS A ACRESCENTAR</span><input id="hm-add" class="hm-input" type="number" min="0.1" step="0.1" value="1"></label>
-      <label style="display:block;margin-top:12px"><span class="hm-label">MOTIVO / OBSERVAÇÃO (opcional)</span><input id="hm-reason" class="hm-input" type="text" placeholder="Ex.: Operação do equipamento"></label>
-      <div class="hm-actions"><button id="hm-cancel" class="hm-cancel" type="button">Cancelar</button><button id="hm-confirm" class="hm-confirm" type="button">Atualizar Horímetro</button></div>
-    </div>`;
-    document.body.appendChild(el);
-    const close=()=>el.classList.remove('open');
-    el.querySelector('#hm-close').onclick=close;el.querySelector('#hm-cancel').onclick=close;
-    el.addEventListener('click',e=>{if(e.target===el)close()});return el;
-  }
-
-  async function findEquipmentByName(name){
-    const r=root();if(!r)return null;
-    const snap=await r.child(cmmsRootPath(r)+'equipments').once('value');
-    const data=snap.val()||{};const wanted=String(name||'').trim().toLowerCase();
-    for(const [id,e] of Object.entries(data)){
-      const n=String(e?.name||e?.nome||e?.codigo||e?.code||'').trim();
-      if(n.toLowerCase()===wanted)return [id,e];
-    }
-    return null;
-  }
-
-  async function openHorimetro(id,equipment){
-    const r=root();
-    if(!r)return alert('Firebase ainda não está disponível. Aguarde a conexão e tente novamente.');
-    let entry=equipment&&id?[id,equipment]:null;
-    if(!entry)entry=await findEquipmentByName(typeof equipment==='string'?equipment:'');
-    if(!entry)return alert('Equipamento não encontrado no Firebase.');
-    id=entry[0];equipment=entry[1];
-    const m=modal();const current=num(equipment?.horimetro);
-    m.querySelector('#hm-title').textContent=equipment?.name||equipment?.nome||'Equipamento';
-    m.querySelector('#hm-current').innerHTML='Horímetro atual:<strong>'+current.toLocaleString('pt-BR')+' h</strong>';
-    m.querySelector('#hm-add').value='1';m.querySelector('#hm-reason').value='';m.classList.add('open');
-    setTimeout(()=>m.querySelector('#hm-add').focus(),50);
-    const btn=m.querySelector('#hm-confirm');
-    btn.onclick=async()=>{
-      const add=num(m.querySelector('#hm-add').value);const reason=m.querySelector('#hm-reason').value.trim();
-      if(!(add>0)){alert('Informe uma quantidade de horas maior que zero.');return}
-      btn.disabled=true;btn.textContent='Atualizando...';
-      try{
-        const ref=r.child(equipmentPath(r,id));
-        const snap=await ref.once('value');const fresh=snap.val()||equipment||{};const next=num(fresh.horimetro)+add;
-        await ref.update({horimetro:next,updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedByDevice:window.deviceId||'DEV-NAVEGADOR'});
-        const h=r.child(historyPath(r)).push();
-        await h.set({date:firebase.database.ServerValue.TIMESTAMP,equipment:fresh.name||fresh.nome||id,event:'Horímetro atualizado: +'+add+' h'+(reason?' — '+reason:''),orderId:'-',cost:0,device:window.deviceId||'DEV-NAVEGADOR'});
-        m.classList.remove('open');
-      }catch(err){console.error('Erro ao atualizar horímetro:',err);alert('Não foi possível atualizar o horímetro no Firebase. Verifique a conexão/permissão.');}
-      finally{btn.disabled=false;btn.textContent='Atualizar Horímetro'}
-    };
-  }
-
-  function addButtons(){
-    const list=document.getElementById('equipmentList');if(!list)return;
-    [...list.children].forEach(card=>{
-      if(!card)return;
-      const existing=card.querySelectorAll('.horimetro-action-wrap');
-      if(existing.length>1)[...existing].slice(1).forEach(x=>x.remove());
-      if(card.querySelector('.horimetro-action-wrap'))return;
-      const title=card.querySelector('h3');const name=(title?.textContent||'').trim();if(!name)return;
-      const wrap=document.createElement('div');wrap.className='horimetro-action-wrap';
-      const b=document.createElement('button');b.type='button';b.className='horimetro-action-btn';
-      b.innerHTML='<i class="fa-solid fa-gauge-high" style="margin-right:6px"></i>Aumentar Horímetro';
-      b.onclick=()=>openHorimetro(null,name);wrap.appendChild(b);card.appendChild(wrap);
-    });
-  }
-
-  function init(){styles();addButtons();const list=document.getElementById('equipmentList');
-    if(list&&!list.dataset.horimetroObserver){list.dataset.horimetroObserver='1';new MutationObserver(()=>setTimeout(addButtons,0)).observe(list,{childList:true,subtree:true})}
-    [250,600,1200,2000,4000].forEach(ms=>setTimeout(addButtons,ms));
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
-  window.aumentarHorimetro=openHorimetro;window.aumentarHorimetroPorNome=name=>openHorimetro(null,name);
+'use strict';
+if(window.__horimetroActionsInstalled)return;
+window.__horimetroActionsInstalled=true;
+const root=()=>window.cmmsRoot||null;
+const num=v=>{const n=Number(String(v??'').replace(',','.'));return Number.isFinite(n)?n:0};
+const rootPath=r=>{try{return /\/workshopCMMS\/?$/i.test(String(r.toString()))?'':'workshopCMMS/'}catch(e){return ''}};
+const eqPath=(r,id)=>rootPath(r)+'equipments/'+id;
+const histPath=r=>rootPath(r)+'history';
+function styles(){if(document.getElementById('horimetro-actions-style'))return;const s=document.createElement('style');s.id='horimetro-actions-style';s.textContent=`
+.horimetro-action-wrap{margin-top:10px;display:flex;gap:8px}.horimetro-action-btn{flex:1;border:1px solid #2563eb;background:#172554;color:#bfdbfe;border-radius:10px;padding:9px 10px;font-size:12px;font-weight:800;cursor:pointer;transition:.2s}.horimetro-action-btn:hover{background:#2563eb;color:#fff}.horimetro-action-btn:disabled{opacity:.6;cursor:wait}
+/* Se algum módulo antigo deixar uma segunda cópia, somente a primeira fica visível. */
+.horimetro-action-wrap~.horimetro-action-wrap{display:none!important}
+#horimetro-modal-overlay{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.78);backdrop-filter:blur(5px);padding:16px}#horimetro-modal-overlay.open{display:flex}#horimetro-modal-card{width:100%;max-width:460px;background:linear-gradient(145deg,#111c32,#0b1426);border:1px solid #2d4264;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.5);padding:22px;box-sizing:border-box}.hm-label{display:block;font-size:11px;font-weight:800;color:#94a3b8;margin-bottom:6px}.hm-input{width:100%;box-sizing:border-box;padding:12px;border-radius:11px;background:#020617;color:#e2e8f0;border:1px solid #334155;outline:none;font-weight:700}.hm-input:focus{border-color:#3b82f6}.hm-actions{display:flex;gap:8px;margin-top:14px}.hm-cancel,.hm-confirm{flex:1;border:0;border-radius:11px;padding:11px;font-weight:900;cursor:pointer}.hm-cancel{background:#1e293b;color:#e2e8f0}.hm-confirm{background:#2563eb;color:#fff}.hm-current{margin:14px 0;padding:12px;border-radius:11px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;font-size:12px}.hm-current strong{color:#fff;font-size:20px;margin-left:5px}`;document.head.appendChild(s)}
+function modal(){let el=document.getElementById('horimetro-modal-overlay');if(el)return el;el=document.createElement('div');el.id='horimetro-modal-overlay';el.innerHTML=`<div id="horimetro-modal-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><div style="font-size:10px;color:#60a5fa;font-weight:900;text-transform:uppercase;letter-spacing:.12em">Horímetro</div><div id="hm-title" style="font-size:20px;font-weight:900;margin-top:3px"></div></div><button id="hm-close" type="button" style="width:36px;height:36px;border:0;border-radius:9px;background:#1e293b;color:#e2e8f0;font-size:18px;cursor:pointer">✕</button></div><div id="hm-current" class="hm-current"></div><label><span class="hm-label">QUANTIDADE DE HORAS A ACRESCENTAR</span><input id="hm-add" class="hm-input" type="number" min="0.1" step="0.1" value="1"></label><label style="display:block;margin-top:12px"><span class="hm-label">MOTIVO / OBSERVAÇÃO (opcional)</span><input id="hm-reason" class="hm-input" type="text" placeholder="Ex.: Operação do equipamento"></label><div class="hm-actions"><button id="hm-cancel" class="hm-cancel" type="button">Cancelar</button><button id="hm-confirm" class="hm-confirm" type="button">Atualizar Horímetro</button></div></div>`;document.body.appendChild(el);const close=()=>el.classList.remove('open');el.querySelector('#hm-close').onclick=close;el.querySelector('#hm-cancel').onclick=close;el.addEventListener('click',e=>{if(e.target===el)close()});return el}
+async function findEquipment(name){const r=root();if(!r)return null;const snap=await r.child(rootPath(r)+'equipments').once('value');const data=snap.val()||{},wanted=String(name||'').trim().toLowerCase();for(const [id,e] of Object.entries(data)){const n=String(e?.name||e?.nome||e?.codigo||e?.code||'').trim().toLowerCase();if(n===wanted)return[id,e]}return null}
+async function openHorimetro(id,equipment){const r=root();if(!r)return alert('Firebase ainda não está disponível. Aguarde a conexão e tente novamente.');let entry=equipment&&id?[id,equipment]:null;if(!entry)entry=await findEquipment(typeof equipment==='string'?equipment:'');if(!entry)return alert('Equipamento não encontrado no Firebase.');id=entry[0];equipment=entry[1];const m=modal(),current=num(equipment?.horimetro);m.querySelector('#hm-title').textContent=equipment?.name||equipment?.nome||'Equipamento';m.querySelector('#hm-current').innerHTML='Horímetro atual:<strong>'+current.toLocaleString('pt-BR')+' h</strong>';m.querySelector('#hm-add').value='1';m.querySelector('#hm-reason').value='';m.classList.add('open');setTimeout(()=>m.querySelector('#hm-add').focus(),50);const btn=m.querySelector('#hm-confirm');btn.onclick=async()=>{const add=num(m.querySelector('#hm-add').value),reason=m.querySelector('#hm-reason').value.trim();if(!(add>0)){alert('Informe uma quantidade de horas maior que zero.');return}btn.disabled=true;btn.textContent='Atualizando...';try{const ref=r.child(eqPath(r,id)),snap=await ref.once('value'),fresh=snap.val()||equipment||{},next=num(fresh.horimetro)+add;await ref.update({horimetro:next,updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedByDevice:window.deviceId||'DEV-NAVEGADOR'});await r.child(histPath(r)).push().set({date:firebase.database.ServerValue.TIMESTAMP,equipment:fresh.name||fresh.nome||id,event:'Horímetro atualizado: +'+add+' h'+(reason?' — '+reason:''),orderId:'-',cost:0,device:window.deviceId||'DEV-NAVEGADOR'});m.classList.remove('open')}catch(err){console.error(err);alert('Não foi possível atualizar o horímetro no Firebase. Verifique a conexão/permissão.')}finally{btn.disabled=false;btn.textContent='Atualizar Horímetro'}}}
+function cleanupDuplicates(card){const buttons=[...card.querySelectorAll('button')].filter(b=>/Aumentar\s+Horímetro/i.test((b.textContent||'').trim()));if(buttons.length>1){buttons.slice(1).forEach(b=>{const w=b.closest('.horimetro-action-wrap');if(w)w.remove();else b.remove()})}}
+function addButtons(){const list=document.getElementById('equipmentList');if(!list)return;[...list.children].forEach(card=>{if(!card)return;cleanupDuplicates(card);const existing=card.querySelector('.horimetro-action-wrap');if(existing)return;const title=card.querySelector('h3'),name=(title?.textContent||'').trim();if(!name)return;const wrap=document.createElement('div');wrap.className='horimetro-action-wrap';const b=document.createElement('button');b.type='button';b.className='horimetro-action-btn';b.innerHTML='<i class="fa-solid fa-gauge-high" style="margin-right:6px"></i>Aumentar Horímetro';b.onclick=()=>openHorimetro(null,name);wrap.appendChild(b);card.appendChild(wrap)})}
+function init(){styles();addButtons();const list=document.getElementById('equipmentList');if(list&&!list.dataset.horimetroObserver){list.dataset.horimetroObserver='1';new MutationObserver(()=>setTimeout(addButtons,0)).observe(list,{childList:true,subtree:true})}[250,600,1200,2000,4000].forEach(ms=>setTimeout(addButtons,ms))}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();window.aumentarHorimetro=openHorimetro;window.aumentarHorimetroPorNome=name=>openHorimetro(null,name);
 })();
