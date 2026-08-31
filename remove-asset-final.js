@@ -1,10 +1,10 @@
-/*
- * Módulo de compatibilidade.
- * O gerenciamento de ativos já cria o botão nativo "Remover Ativo"
- * em data-management-actions.js. Este arquivo permanece carregado,
- * mas não injeta um segundo botão no card.
- */
+/* Compatibilidade de ativos: garante exatamente um botão Remover Ativo por card. */
 (function(){
-  'use strict';
-  // Não adicionar botões aqui: evita duplicação no cadastro de ativos.
+'use strict';
+function getState(){return window.cmmsState||{}}
+function getRoot(){try{if(window.firebase&&firebase.apps&&firebase.apps.length)return firebase.database().ref('workshopCMMS')}catch(e){}return window.__firebaseRoot||window.cmmsRoot||null}
+function removeAsset(id,name){if(typeof window.removeAsset==='function'&&window.removeAsset!==removeAsset)return window.removeAsset(id,name);const r=getRoot();if(!r){alert('Firebase ainda não está disponível.');return}if(!confirm('Remover o ativo "'+name+'" do cadastro?\n\nEsta ação não pode ser desfeita.'))return;r.child('equipments/'+id).remove().then(()=>alert('Ativo removido com sucesso.')).catch(e=>{console.error(e);alert('Não foi possível remover o ativo.')})}
+function scan(){const list=document.getElementById('equipmentList');if(!list)return false;const entries=Object.entries(getState().equipments||{});const cards=[...list.children].filter(c=>c&&c.nodeType===1);cards.forEach((card,index)=>{const matches=[...card.querySelectorAll('button')].filter(b=>/remover\s+ativo/i.test((b.textContent||'').replace(/\s+/g,' ').trim()));if(matches.length>1){matches.slice(1).forEach(b=>b.remove());return}if(matches.length===1)return;const entry=entries[index];if(!entry)return;const id=entry[0],a=entry[1]||{},name=String(a.name||a.codigo||a.code||id);const b=document.createElement('button');b.type='button';b.setAttribute('data-remove-asset','1');b.style.cssText='width:100%;padding:9px 12px;margin-top:12px;border-radius:10px;background:rgba(220,38,38,.14);border:1px solid rgba(239,68,68,.35);color:#fca5a5;font-size:12px;font-weight:800;cursor:pointer';b.innerHTML='<i class="fa-solid fa-trash" style="margin-right:7px"></i>Remover Ativo';b.onclick=e=>{e.preventDefault();e.stopPropagation();removeAsset(id,name)};card.appendChild(b)});return true}
+function init(){scan();const ob=new MutationObserver(()=>{if(window.__removeAssetFrame)return;window.__removeAssetFrame=requestAnimationFrame(()=>{window.__removeAssetFrame=0;scan()})});ob.observe(document.body,{childList:true,subtree:true});[300,800,1500,3000,5000,8000].forEach(ms=>setTimeout(scan,ms))}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
