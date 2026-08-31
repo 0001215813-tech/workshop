@@ -39,7 +39,8 @@
       './os-parts-stock-deduction.js?build=1',
       './dashboard-enhancement.js?build=1',
       './horimetro-actions.js?build=4',
-      './horimetro-visible-fix.js?build=4'
+      './horimetro-visible-fix.js?build=4',
+      './button-duplication-fix.js?build=1'
     ];
     const scripts=localScripts.map(src=>'<script src="'+src+'">'+closeScript).join('');
     html=html.replace('</body>',bridge+scripts+'</body>');
