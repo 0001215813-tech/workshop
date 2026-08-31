@@ -94,7 +94,10 @@
   function addButtons(){
     const list=document.getElementById('equipmentList');if(!list)return;
     [...list.children].forEach(card=>{
-      if(!card||card.querySelector('.horimetro-action-wrap'))return;
+      if(!card)return;
+      const existing=card.querySelectorAll('.horimetro-action-wrap');
+      if(existing.length>1)[...existing].slice(1).forEach(x=>x.remove());
+      if(card.querySelector('.horimetro-action-wrap'))return;
       const title=card.querySelector('h3');const name=(title?.textContent||'').trim();if(!name)return;
       const wrap=document.createElement('div');wrap.className='horimetro-action-wrap';
       const b=document.createElement('button');b.type='button';b.className='horimetro-action-btn';
