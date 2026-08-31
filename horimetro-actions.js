@@ -1,18 +1,15 @@
-/* Sistema de atualização do horímetro dos equipamentos. Adiciona apenas a função de incrementar horas. */
+/* Sistema de atualização do horímetro dos equipamentos. Usa workshopCMMS/equipments no Firebase. */
 (function(){
   'use strict';
   if(window.__horimetroActionsInstalled)return;
   window.__horimetroActionsInstalled=true;
 
-  const state=()=>window.cmmsState||{};
   const root=()=>window.cmmsRoot||null;
-  const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
+  const num=v=>{const n=Number(String(v??'').replace(',','.'));return Number.isFinite(n)?n:0};
 
   function styles(){
     if(document.getElementById('horimetro-actions-style'))return;
-    const s=document.createElement('style');
-    s.id='horimetro-actions-style';
+    const s=document.createElement('style');s.id='horimetro-actions-style';
     s.textContent=`
       .horimetro-action-wrap{margin-top:10px;display:flex;gap:8px}
       .horimetro-action-btn{flex:1;border:1px solid #2563eb;background:#172554;color:#bfdbfe;border-radius:10px;padding:9px 10px;font-size:12px;font-weight:800;cursor:pointer;transition:.2s}
@@ -26,19 +23,18 @@
       .hm-input:focus{border-color:#3b82f6}
       .hm-actions{display:flex;gap:8px;margin-top:14px}
       .hm-cancel,.hm-confirm{flex:1;border:0;border-radius:11px;padding:11px;font-weight:900;cursor:pointer}
-      .hm-cancel{background:#1e293b;color:#e2e8f0}
-      .hm-confirm{background:#2563eb;color:#fff}
+      .hm-cancel{background:#1e293b;color:#e2e8f0}.hm-confirm{background:#2563eb;color:#fff}
       .hm-current{margin:14px 0;padding:12px;border-radius:11px;background:#0f172a;border:1px solid #1e293b;color:#cbd5e1;font-size:12px}
       .hm-current strong{color:#fff;font-size:20px;margin-left:5px}
-    `;
-    document.head.appendChild(s);
+    `;document.head.appendChild(s);
   }
 
+  function equipmentPath(id){return 'workshopCMMS/equipments/'+id}
+  function historyPath(){return 'workshopCMMS/history'}
+
   function modal(){
-    let el=document.getElementById('horimetro-modal-overlay');
-    if(el)return el;
-    el=document.createElement('div');
-    el.id='horimetro-modal-overlay';
+    let el=document.getElementById('horimetro-modal-overlay');if(el)return el;
+    el=document.createElement('div');el.id='horimetro-modal-overlay';
     el.innerHTML=`<div id="horimetro-modal-card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
         <div><div style="font-size:10px;color:#60a5fa;font-weight:900;text-transform:uppercase;letter-spacing:.12em">Horímetro</div><div id="hm-title" style="font-size:20px;font-weight:900;margin-top:3px"></div></div>
@@ -51,80 +47,72 @@
     </div>`;
     document.body.appendChild(el);
     const close=()=>el.classList.remove('open');
-    el.querySelector('#hm-close').onclick=close;
-    el.querySelector('#hm-cancel').onclick=close;
-    el.addEventListener('click',e=>{if(e.target===el)close()});
-    return el;
+    el.querySelector('#hm-close').onclick=close;el.querySelector('#hm-cancel').onclick=close;
+    el.addEventListener('click',e=>{if(e.target===el)close()});return el;
   }
 
-  function equipmentEntryByName(name){
-    return Object.entries(state().equipments||{}).find(([,e])=>String(e?.name||e?.nome||'').trim()===String(name||'').trim())||null;
+  async function findEquipmentByName(name){
+    const r=root();if(!r)return null;
+    const snap=await r.child('workshopCMMS/equipments').once('value');
+    const data=snap.val()||{};
+    const wanted=String(name||'').trim().toLowerCase();
+    for(const [id,e] of Object.entries(data)){
+      const n=String(e?.name||e?.nome||e?.codigo||e?.code||'').trim();
+      if(n.toLowerCase()===wanted)return [id,e];
+    }
+    return null;
   }
 
-  function openHorimetro(id,equipment){
+  async function openHorimetro(id,equipment){
     const r=root();
     if(!r)return alert('Firebase ainda não está disponível. Aguarde a conexão e tente novamente.');
-    const m=modal();
-    const current=num(equipment?.horimetro);
-    m.querySelector('#hm-title').textContent=equipment?.name||'Equipamento';
+    let entry=equipment&&id?[id,equipment]:null;
+    if(!entry){
+      const name=typeof equipment==='string'?equipment:'';
+      entry=await findEquipmentByName(name);
+    }
+    if(!entry)return alert('Equipamento não encontrado no Firebase.');
+    id=entry[0];equipment=entry[1];
+    const m=modal();const current=num(equipment?.horimetro);
+    m.querySelector('#hm-title').textContent=equipment?.name||equipment?.nome||'Equipamento';
     m.querySelector('#hm-current').innerHTML='Horímetro atual:<strong>'+current.toLocaleString('pt-BR')+' h</strong>';
-    m.querySelector('#hm-add').value='1';
-    m.querySelector('#hm-reason').value='';
-    m.classList.add('open');
+    m.querySelector('#hm-add').value='1';m.querySelector('#hm-reason').value='';m.classList.add('open');
     setTimeout(()=>m.querySelector('#hm-add').focus(),50);
     const btn=m.querySelector('#hm-confirm');
     btn.onclick=async()=>{
-      const add=num(m.querySelector('#hm-add').value);
-      const reason=m.querySelector('#hm-reason').value.trim();
+      const add=num(m.querySelector('#hm-add').value);const reason=m.querySelector('#hm-reason').value.trim();
       if(!(add>0)){alert('Informe uma quantidade de horas maior que zero.');return}
       btn.disabled=true;btn.textContent='Atualizando...';
       try{
-        const snap=await r.child('equipments/'+id).once('value');
-        const fresh=snap.val()||equipment||{};
+        const ref=r.child(equipmentPath(id));
+        const snap=await ref.once('value');const fresh=snap.val()||equipment||{};
         const next=num(fresh.horimetro)+add;
-        await r.child('equipments/'+id).update({horimetro:next,updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedByDevice:window.deviceId||'DEV-NAVEGADOR'});
-        const h=r.child('history').push();
+        await ref.update({horimetro:next,updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedByDevice:window.deviceId||'DEV-NAVEGADOR'});
+        const h=r.child(historyPath()).push();
         await h.set({date:firebase.database.ServerValue.TIMESTAMP,equipment:fresh.name||fresh.nome||id,event:'Horímetro atualizado: +'+add+' h'+(reason?' — '+reason:''),orderId:'-',cost:0,device:window.deviceId||'DEV-NAVEGADOR'});
         m.classList.remove('open');
-      }catch(err){
-        console.error('Erro ao atualizar horímetro:',err);
-        alert('Não foi possível atualizar o horímetro no Firebase. Verifique a conexão/permissão.');
-      }finally{btn.disabled=false;btn.textContent='Atualizar Horímetro'}
+      }catch(err){console.error('Erro ao atualizar horímetro:',err);alert('Não foi possível atualizar o horímetro no Firebase. Verifique a conexão/permissão.');}
+      finally{btn.disabled=false;btn.textContent='Atualizar Horímetro'}
     };
   }
 
   function addButtons(){
-    const list=document.getElementById('equipmentList');
-    if(!list)return;
-    const eqs=state().equipments||{};
-    [...list.children].forEach((card,i)=>{
+    const list=document.getElementById('equipmentList');if(!list)return;
+    [...list.children].forEach(card=>{
       if(!card||card.querySelector('.horimetro-action-wrap'))return;
-      const title=card.querySelector('h3');
-      const name=(title?.textContent||'').trim();
-      const found=equipmentEntryByName(name)||Object.entries(eqs)[i];
-      if(!found)return;
-      const wrap=document.createElement('div');
-      wrap.className='horimetro-action-wrap';
-      const b=document.createElement('button');
-      b.type='button';b.className='horimetro-action-btn';
-      b.innerHTML='<i class="fa-solid fa-gauge-high" style="margin-right:6px"></i>Aumentar Horímetro';
-      b.onclick=()=>openHorimetro(found[0],found[1]);
-      wrap.appendChild(b);
-      card.appendChild(wrap);
+      const title=card.querySelector('h3');const name=(title?.textContent||'').trim();if(!name)return;
+      const wrap=document.createElement('div');wrap.className='horimetro-action-wrap';
+      const b=document.createElement('button');b.type='button';b.className='horimetro-action-btn';
+      b.innerHTML='<i class="fa-solid fa-gauge-high" style="margin-right:6px"></i>Aumentar Horímetro>';
+      b.onclick=()=>openHorimetro(null,name);wrap.appendChild(b);card.appendChild(wrap);
     });
   }
 
-  function init(){
-    styles();
-    addButtons();
-    const list=document.getElementById('equipmentList');
-    if(list&&!list.dataset.horimetroObserver){
-      list.dataset.horimetroObserver='1';
-      new MutationObserver(()=>setTimeout(addButtons,0)).observe(list,{childList:true,subtree:true});
-    }
+  function init(){styles();addButtons();const list=document.getElementById('equipmentList');
+    if(list&&!list.dataset.horimetroObserver){list.dataset.horimetroObserver='1';new MutationObserver(()=>setTimeout(addButtons,0)).observe(list,{childList:true,subtree:true})}
     [250,600,1200,2000,4000].forEach(ms=>setTimeout(addButtons,ms));
   }
-
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
   window.aumentarHorimetro=openHorimetro;
+  window.aumentarHorimetroPorNome=name=>openHorimetro(null,name);
 })();
