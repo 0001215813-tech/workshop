@@ -1,4 +1,4 @@
-/* Baixa automática de peças: somente quando uma O.S. muda para Concluída. */
+/* Baixa automática de peças: somente quando uma O.S. muda para Concluída. Uma O.S. concluída consome 1 unidade da peça selecionada. */
 (function(){
 'use strict';
 function completed(s){return String(s||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')==='concluida';}
@@ -11,13 +11,19 @@ async function deduct(id,o){
   const hit=Object.entries(parts).find(([k,p])=>String((p||{}).name||(p||{}).nome||(p||{}).item||(p||{}).partName||(p||{}).descricao||(p||{}).description||(p||{}).code||(p||{}).codigo||'').trim().toLowerCase()===wanted);
   if(!hit)return;
   const p=hit[1]||{}; const key=p.quantity!=null?'quantity':p.stock!=null?'stock':p.qty!=null?'qty':p.quantidade!=null?'quantidade':'quantity';
-  const rawQty=o.quantityUsed??o.usedQuantity??o.consumedQuantity??o.partQuantity??o.quantityConsumed??o.quantidadePeca??o.quantidadeUsada??1;
-  const qty=Math.max(1,Number(rawQty)||1);
   const stockRef=r.child('parts/'+hit[0]+'/'+key);
-  const tx=await stockRef.transaction(v=>Math.max(0,Number(v||0)-qty));
+  const tx=await stockRef.transaction(v=>Math.max(0,Number(v||0)-1));
   if(!tx.committed)return;
+  /* Mantém os campos espelhados iguais quando o cadastro possui mais de um campo de estoque. */
+  const newQty=Math.max(0,Number(tx.snapshot?.val()||0));
+  const updates={};
+  if(p.quantity!=null)updates.quantity=newQty;
+  if(p.stock!=null)updates.stock=newQty;
+  if(p.qty!=null)updates.qty=newQty;
+  if(p.quantidade!=null)updates.quantidade=newQty;
+  if(Object.keys(updates).length>1)await r.child('parts/'+hit[0]).update(updates);
   await r.child('orders/'+id+'/partsConsumedAt').set(Date.now());
- }catch(e){console.error('Falha ao dar baixa na peça da O.S.',e)}
+ }catch(e){console.error('Falha ao dar baixa em uma peça da O.S.',e)}
 }
 function install(){
  if(window.__osPartsStockDeductionInstalled)return;
